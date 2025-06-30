@@ -2,14 +2,21 @@
   "name": "@0glabs/0g-ts-sdk",
   "version": "0.2.9",
   "description": "JS SDK for 0G Storage",
-  "main": "./lib.commonjs/index.js",
   "exports": {
-    "require": "./lib.commonjs/index.js",
-    "import": "./lib.esm/index.js"
+    ".": {
+      "types": "./lib.commonjs/index.d.ts",
+      "require": "./lib.commonjs/index.js",
+      "import": "./lib.esm/index.js",
+      "default": "./lib.esm/index.js"
+    },
+    "./browser": {
+      "types": "./lib.esm/index.d.ts",
+      "require": "./dist/zgstorage.umd.min.js",
+      "import": "./dist/zgstorage.esm.js",
+      "default": "./dist/zgstorage.esm.min.js"
+    }
   },
-  "module": "./lib.esm/index.js",
   "packageManager": "pnpm@8.7.1",
-  "browser": {},
   "scripts": {
     "format": "prettier --write src.ts/**/*.ts src.ts/*.ts",
     "test": "jest",
@@ -53,11 +60,12 @@
   "peerDependencies": {
     "ethers": "6.13.1"
   },
-  "types": "./lib.commonjs/index.d.ts",
-  "directories": {
-    "example": "examples",
-    "test": "tests"
-  },
+  "files": [
+    "dist",
+    "lib.commonjs",
+    "lib.esm",
+    "types"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0glabs/0g-ts-sdk.git"
