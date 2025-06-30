@@ -136,6 +136,31 @@ import { BrowserProvider } from 'ethers';  // or from ethers.js url
 let provider = new BrowserProvider(window.ethereum) // metamask need to be installed
 ```
 
+
+### Vite example:
+
+To use the SDK with Vite, set up polyfills in your `vite.config.ts`:
+
+```ts
+import { defineConfig } from 'vite';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+
+export default defineConfig({
+  plugins: [
+    ...
+    nodePolyfills({
+      include: ['crypto', 'buffer', 'stream', 'util', 'events'],
+    }),
+  ],
+});
+```
+
+Now, you can import SDK files with the `/browser` suffix:
+
+```ts
+import { Indexer, Blob } from '@0glabs/0g-ts-sdk/browser';
+```
+
 Check codes in [examples](./examples) for more details.
 
 ## Contribute
