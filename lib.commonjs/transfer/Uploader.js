@@ -73,9 +73,9 @@ class Uploader {
             txOpts.gasLimit = this.gasLimit;
         }
         console.log('Submitting transaction with storage fee:', fee);
-        let receipt = await (0, utils_js_1.txWithGasAdjustment)(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
-        if (receipt === null) {
-            return ['', new Error('Failed to submit transaction')];
+        var [receipt, err] = await (0, utils_js_1.txWithGasAdjustment)(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
+        if (receipt === null || err !== null) {
+            return ['', new Error('Failed to submit transaction: ' + err)];
         }
         console.log('Transaction hash:', receipt.hash);
         const txSeqs = await this.processLogs(receipt);

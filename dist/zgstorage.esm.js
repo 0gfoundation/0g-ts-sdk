@@ -21550,6 +21550,7 @@ async function txWithGasAdjustment(contract, provider, method, params, txOpts, r
     if (retryOpts !== undefined && retryOpts.MaxGasPrice > 0) {
         maxGasPrice = BigInt(retryOpts.MaxGasPrice);
     }
+    let err = null;
     while (current_gas_price <= maxGasPrice) {
         console.log(`Sending transaction with gas price ${current_gas_price}`);
         txOpts.gasPrice = current_gas_price;
@@ -21568,15 +21569,22 @@ async function txWithGasAdjustment(contract, provider, method, params, txOpts, r
             if (receipt === null) {
                 throw new Error('Get transaction receipt timeout');
             }
-            return receipt;
+            return [receipt, null];
         }
         catch (e) {
-            console.log(`Failed to send transaction with gas price ${current_gas_price}, with error ${e}, retrying with higher gas price`);
-            current_gas_price =
-                (BigInt(11) * BigInt(current_gas_price)) / BigInt(10);
+            err = e;
+            if (e instanceof Error && e.message.includes('timeout')) {
+                console.log(`Failed to send transaction with gas price ${current_gas_price}, with error ${e}, retrying with higher gas price`);
+                current_gas_price =
+                    (BigInt(11) * BigInt(current_gas_price)) / BigInt(10);
+                await delay(1000);
+            }
+            else {
+                return [null, err];
+            }
         }
     }
-    return null;
+    return [null, err];
 }
 async function waitForReceipt(provider, txHash, opts) {
     var receipt = null;
@@ -24432,9 +24440,9 @@ class Uploader {
             txOpts.gasLimit = this.gasLimit;
         }
         console.log('Submitting transaction with storage fee:', fee);
-        let receipt = await txWithGasAdjustment(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
-        if (receipt === null) {
-            return ['', new Error('Failed to submit transaction')];
+        var [receipt, err] = await txWithGasAdjustment(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
+        if (receipt === null || err !== null) {
+            return ['', new Error('Failed to submit transaction: ' + err)];
         }
         console.log('Transaction hash:', receipt.hash);
         const txSeqs = await this.processLogs(receipt);
