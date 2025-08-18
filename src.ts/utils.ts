@@ -80,12 +80,14 @@ export async function txWithGasAdjustment(
     params: unknown[],
     txOpts: { value: bigint; gasPrice?: bigint; gasLimit?: bigint },
     retryOpts?: RetryOpts
-): Promise<TransactionReceipt | null> {
+): Promise<[TransactionReceipt | null, Error | null]> {
     let current_gas_price = txOpts.gasPrice! // gas price is required in txOpts
     let maxGasPrice = current_gas_price
     if (retryOpts !== undefined && retryOpts.MaxGasPrice > 0) {
         maxGasPrice = BigInt(retryOpts.MaxGasPrice)
     }
+
+    let err: Error | null = null
 
     while (current_gas_price <= maxGasPrice) {
         console.log(`Sending transaction with gas price ${current_gas_price}`)
@@ -93,6 +95,8 @@ export async function txWithGasAdjustment(
         try {
             let resp = await contract
                 .getFunction(method)
+       
+       
                 .send(...params, txOpts)
             const tx = (await Promise.race([
                 resp.wait(),
@@ -113,16 +117,23 @@ export async function txWithGasAdjustment(
                 throw new Error('Get transaction receipt timeout')
             }
 
-            return receipt
+            return [receipt, null]
         } catch (e) {
-            console.log(
-                `Failed to send transaction with gas price ${current_gas_price}, with error ${e}, retrying with higher gas price`
-            )
-            current_gas_price =
-                (BigInt(11) * BigInt(current_gas_price)) / BigInt(10)
+            err = e as Error
+            if (e instanceof Error && e.message.includes('timeout')) {
+                console.log(
+                    `Failed to send transaction with gas price ${current_gas_price}, with error ${e}, retrying with higher gas price`
+                )
+                current_gas_price =
+                    (BigInt(11) * BigInt(current_gas_price)) / BigInt(10)
+
+                await delay(1000)
+            } else {
+                return [null, err]
+            }
         }
     }
-    return null
+    return [null, err]
 }
 
 async function waitForReceipt(

@@ -21,5 +21,5 @@ export declare function txWithGasAdjustment(contract: BaseContract, provider: et
     value: bigint;
     gasPrice?: bigint;
     gasLimit?: bigint;
-}, retryOpts?: RetryOpts): Promise<TransactionReceipt | null>;
+}, retryOpts?: RetryOpts): Promise<[TransactionReceipt | null, Error | null]>;
 //# sourceMappingURL=utils.d.ts.map

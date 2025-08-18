@@ -126,7 +126,7 @@ export class Uploader {
 
         console.log('Submitting transaction with storage fee:', fee)
 
-        let receipt = await txWithGasAdjustment(
+        var [receipt, err] = await txWithGasAdjustment(
             this.flow,
             this.provider,
             'submit',
@@ -135,8 +135,8 @@ export class Uploader {
             retryOpts
         )
 
-        if (receipt === null) {
-            return ['', new Error('Failed to submit transaction')]
+        if (receipt === null || err !== null) {
+            return ['', new Error('Failed to submit transaction: ' + err)]
         }
 
         console.log('Transaction hash:', receipt.hash)
