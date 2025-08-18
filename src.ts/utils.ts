@@ -95,8 +95,8 @@ export async function txWithGasAdjustment(
         try {
             let resp = await contract
                 .getFunction(method)
-       
-       
+
+
                 .send(...params, txOpts)
             const tx = (await Promise.race([
                 resp.wait(),
@@ -144,7 +144,7 @@ async function waitForReceipt(
     var receipt: ethers.TransactionReceipt | null = null
 
     if (opts === undefined) {
-        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0 }
+        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 }
     }
     if (opts.Retries === undefined || opts.Retries === 0) {
         opts.Retries = 10

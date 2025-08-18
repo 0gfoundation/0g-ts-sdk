@@ -163,7 +163,7 @@ export class Uploader {
             ' tasks...'
         )
 
-        err = await this.processTasksInParallel(file, tree, tasks)
+        err = await this.processTasksInParallel(file, tree, tasks, retryOpts)
             .then(() => console.log('All tasks processed'))
             .catch((error) => {
                 return error
@@ -222,7 +222,7 @@ export class Uploader {
         var receipt: ethers.TransactionReceipt | null = null
 
         if (opts === undefined) {
-            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0 }
+            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 }
         }
 
         let nTries = 0
@@ -289,10 +289,11 @@ export class Uploader {
     async processTasksInParallel(
         file: AbstractFile,
         tree: MerkleTree,
-        tasks: UploadTask[]
+        tasks: UploadTask[],
+        retryOpts?: RetryOpts
     ): Promise<(number | Error)[]> {
         const taskPromises = tasks.map((task) =>
-            this.uploadTask(file, tree, task)
+            this.uploadTask(file, tree, task, retryOpts)
         )
         return await Promise.all(taskPromises)
     }
@@ -304,9 +305,9 @@ export class Uploader {
         return (
             Math.floor(
                 (startIndex + config.numShard - 1 - config.shardId) /
-                    config.numShard
+                config.numShard
             ) *
-                config.numShard +
+            config.numShard +
             config.shardId
         )
     }
@@ -448,7 +449,8 @@ export class Uploader {
     async uploadTask(
         file: AbstractFile,
         tree: MerkleTree,
-        uploadTask: UploadTask
+        uploadTask: UploadTask,
+        retryOpts?: RetryOpts
     ): Promise<number | Error> {
         let segIndex = uploadTask.segIndex
         var segments: SegmentWithProof[] = []
@@ -473,14 +475,36 @@ export class Uploader {
             segIndex += uploadTask.numShard
         }
 
-        let res = await this.nodes[
-            uploadTask.clientIndex
-        ].uploadSegmentsByTxSeq(segments, uploadTask.txSeq)
+        // Retry logic for "too many data writing" errors
+        const maxRetries = retryOpts?.TooManyDataRetries ?? 3
+        const retryInterval = retryOpts?.Interval ?? 5
 
-        if (res === null) {
-            return new Error('Failed to upload segments')
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                let res = await this.nodes[
+                    uploadTask.clientIndex
+                ].uploadSegmentsByTxSeq(segments, uploadTask.txSeq)
+
+                if (res === null) {
+                    return new Error('Failed to upload segments')
+                }
+
+                return res
+            } catch (error: any) {
+                const errorMessage = error?.message?.toLowerCase() || ''
+                const isTooManyDataError = errorMessage.includes('too many data writing')
+
+                if (isTooManyDataError && attempt < maxRetries) {
+                    console.log(`Too many data writing error, retrying... (attempt ${attempt + 1}/${maxRetries})`)
+                    await delay(retryInterval * 1000)
+                    continue
+                } else {
+                    return error instanceof Error ? error : new Error(String(error))
+                }
+            }
         }
 
-        return res
+        // This should never be reached, but just in case
+        return new Error('Failed to upload segments after all retries')
     }
 }

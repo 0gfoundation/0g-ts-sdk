@@ -90,7 +90,7 @@ export async function txWithGasAdjustment(contract, provider, method, params, tx
 async function waitForReceipt(provider, txHash, opts) {
     var receipt = null;
     if (opts === undefined) {
-        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0 };
+        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 };
     }
     if (opts.Retries === undefined || opts.Retries === 0) {
         opts.Retries = 10;

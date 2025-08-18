@@ -92,7 +92,7 @@ class Uploader {
             return ['', new Error('Failed to get upload tasks')];
         }
         console.log('Processing tasks in parallel with ', tasks.length, ' tasks...');
-        err = await this.processTasksInParallel(file, tree, tasks)
+        err = await this.processTasksInParallel(file, tree, tasks, retryOpts)
             .then(() => console.log('All tasks processed'))
             .catch((error) => {
             return error;
@@ -139,7 +139,7 @@ class Uploader {
     async waitForReceipt(txHash, opts) {
         var receipt = null;
         if (opts === undefined) {
-            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0 };
+            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 };
         }
         let nTries = 0;
         while (nTries < opts.Retries) {
@@ -184,8 +184,8 @@ class Uploader {
         return info;
     }
     // Function to process all tasks in parallel
-    async processTasksInParallel(file, tree, tasks) {
-        const taskPromises = tasks.map((task) => this.uploadTask(file, tree, task));
+    async processTasksInParallel(file, tree, tasks, retryOpts) {
+        const taskPromises = tasks.map((task) => this.uploadTask(file, tree, task, retryOpts));
         return await Promise.all(taskPromises);
     }
     nextSgmentIndex(config, startIndex) {
@@ -277,7 +277,7 @@ class Uploader {
         };
         return [allDataUploaded, segWithProof, null];
     }
-    async uploadTask(file, tree, uploadTask) {
+    async uploadTask(file, tree, uploadTask, retryOpts) {
         let segIndex = uploadTask.segIndex;
         var segments = [];
         for (let i = 0; i < uploadTask.taskSize; i += 1) {
@@ -293,11 +293,33 @@ class Uploader {
             }
             segIndex += uploadTask.numShard;
         }
-        let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
-        if (res === null) {
-            return new Error('Failed to upload segments');
+        // Retry logic for "too many data writing" errors
+        const maxRetries = retryOpts?.TooManyDataRetries ?? 3; // Default to 3 retries
+        const retryInterval = retryOpts?.Interval ?? 5; // Default to 5 second intervals
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
+                if (res === null) {
+                    return new Error('Failed to upload segments');
+                }
+                return res;
+            }
+            catch (error) {
+                const errorMessage = error?.message?.toLowerCase() || '';
+                const isTooManyDataError = errorMessage.includes('too many data writing');
+                if (isTooManyDataError && attempt < maxRetries) {
+                    console.log(`Too many data writing error, retrying... (attempt ${attempt + 1}/${maxRetries})`);
+                    await (0, utils_js_1.delay)(retryInterval * 1000);
+                    continue;
+                }
+                else {
+                    // If it's not a retryable error or we've exhausted retries, return the error
+                    return error instanceof Error ? error : new Error(String(error));
+                }
+            }
         }
-        return res;
+        // This should never be reached, but just in case
+        return new Error('Failed to upload segments after all retries');
     }
 }
 exports.Uploader = Uploader;
