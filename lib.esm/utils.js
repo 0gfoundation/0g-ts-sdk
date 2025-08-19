@@ -66,6 +66,7 @@ export async function txWithGasAdjustment(contract, provider, method, params, tx
             if (tx === null) {
                 throw new Error('Send transaction timeout');
             }
+            console.log(tx);
             let receipt = await waitForReceipt(provider, tx.hash, retryOpts);
             if (receipt === null) {
                 throw new Error('Get transaction receipt timeout');
@@ -89,7 +90,7 @@ export async function txWithGasAdjustment(contract, provider, method, params, tx
 }
 async function waitForReceipt(provider, txHash, opts) {
     var receipt = null;
-    if (opts === undefined) {
+    if (opts === undefined || opts === null) {
         opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 };
     }
     if (opts.Retries === undefined || opts.Retries === 0) {
@@ -100,11 +101,11 @@ async function waitForReceipt(provider, txHash, opts) {
     }
     let nTries = 0;
     while (nTries < opts.Retries) {
+        await delay(opts.Interval * 1000);
         receipt = await provider.getTransactionReceipt(txHash);
         if (receipt !== null && receipt.status == 1) {
             return receipt;
         }
-        await delay(opts.Interval * 1000);
         nTries++;
     }
     return null;

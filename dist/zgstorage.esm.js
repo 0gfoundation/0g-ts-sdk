@@ -21565,6 +21565,7 @@ async function txWithGasAdjustment(contract, provider, method, params, txOpts, r
             if (tx === null) {
                 throw new Error('Send transaction timeout');
             }
+            console.log(tx);
             let receipt = await waitForReceipt(provider, tx.hash, retryOpts);
             if (receipt === null) {
                 throw new Error('Get transaction receipt timeout');
@@ -21588,7 +21589,7 @@ async function txWithGasAdjustment(contract, provider, method, params, txOpts, r
 }
 async function waitForReceipt(provider, txHash, opts) {
     var receipt = null;
-    if (opts === undefined) {
+    if (opts === undefined || opts === null) {
         opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 };
     }
     if (opts.Retries === undefined || opts.Retries === 0) {
@@ -21599,11 +21600,11 @@ async function waitForReceipt(provider, txHash, opts) {
     }
     let nTries = 0;
     while (nTries < opts.Retries) {
+        await delay(opts.Interval * 1000);
         receipt = await provider.getTransactionReceipt(txHash);
         if (receipt !== null && receipt.status == 1) {
             return receipt;
         }
-        await delay(opts.Interval * 1000);
         nTries++;
     }
     return null;
@@ -24499,22 +24500,6 @@ class Uploader {
         }
         return txSeqs;
     }
-    async waitForReceipt(txHash, opts) {
-        var receipt = null;
-        if (opts === undefined) {
-            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 };
-        }
-        let nTries = 0;
-        while (nTries < opts.Retries) {
-            receipt = await this.provider.getTransactionReceipt(txHash);
-            if (receipt !== null && receipt.status == 1) {
-                return receipt;
-            }
-            await delay(opts.Interval * 1000);
-            nTries++;
-        }
-        return null;
-    }
     async waitForLogEntry(txSeq, finalityRequired) {
         console.log('Wait for log entry on storage node');
         let info = null;
@@ -24673,15 +24658,23 @@ class Uploader {
         // Retry logic for "too many data writing" errors
         const maxRetries = retryOpts?.TooManyDataRetries ?? 3;
         const retryInterval = retryOpts?.Interval ?? 5;
+        if (segments.length === 0) {
+            console.log(`No segments to upload for task - all data already uploaded`);
+            return 0; // Success, but no work to do
+        }
+        console.log(`Uploading ${segments.length} segments to node ${this.nodes[uploadTask.clientIndex].url} for txSeq ${uploadTask.txSeq}`);
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
                 if (res === null) {
-                    return new Error('Failed to upload segments');
+                    const errorMsg = `Failed to upload segments to node ${this.nodes[uploadTask.clientIndex].url} - received null response`;
+                    console.log(errorMsg);
+                    return new Error(errorMsg);
                 }
                 return res;
             }
             catch (error) {
+                console.log(`Upload error (attempt ${attempt + 1}/${maxRetries + 1}) to node ${this.nodes[uploadTask.clientIndex].url}:`, error.message || error);
                 const errorMessage = error?.message?.toLowerCase() || '';
                 const isTooManyDataError = errorMessage.includes('too many data writing');
                 if (isTooManyDataError && attempt < maxRetries) {

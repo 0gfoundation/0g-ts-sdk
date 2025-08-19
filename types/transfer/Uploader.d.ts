@@ -16,7 +16,6 @@ export declare class Uploader {
     checkExistence(root: string): Promise<boolean>;
     uploadFile(file: AbstractFile, opts: UploadOption, retryOpts?: RetryOpts): Promise<[string, Error | null]>;
     processLogs(receipt: ethers.TransactionReceipt): Promise<number[]>;
-    waitForReceipt(txHash: string, opts?: RetryOpts): Promise<ethers.TransactionReceipt | null>;
     waitForLogEntry(txSeq: number, finalityRequired: boolean): Promise<FileInfo | null>;
     processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[], retryOpts?: RetryOpts): Promise<Error | null>;
     nextSgmentIndex(config: ShardConfig, startIndex: number): number;

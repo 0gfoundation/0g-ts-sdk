@@ -211,30 +211,6 @@ export class Uploader {
         return txSeqs
     }
 
-    async waitForReceipt(
-        txHash: string,
-        opts?: RetryOpts
-    ): Promise<ethers.TransactionReceipt | null> {
-        var receipt: ethers.TransactionReceipt | null = null
-
-        if (opts === undefined) {
-            opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 }
-        }
-
-        let nTries = 0
-
-        while (nTries < opts.Retries) {
-            receipt = await this.provider.getTransactionReceipt(txHash)
-            if (receipt !== null && receipt.status == 1) {
-                return receipt
-            }
-            await delay(opts.Interval * 1000)
-            nTries++
-        }
-
-        return null
-    }
-
     async waitForLogEntry(
         txSeq: number,
         finalityRequired: boolean
@@ -491,6 +467,13 @@ export class Uploader {
         const maxRetries = retryOpts?.TooManyDataRetries ?? 3
         const retryInterval = retryOpts?.Interval ?? 5
 
+        if (segments.length === 0) {
+            console.log(`No segments to upload for task - all data already uploaded`)
+            return 0 // Success, but no work to do
+        }
+
+        console.log(`Uploading ${segments.length} segments to node ${this.nodes[uploadTask.clientIndex].url} for txSeq ${uploadTask.txSeq}`)
+
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 let res = await this.nodes[
@@ -498,11 +481,15 @@ export class Uploader {
                 ].uploadSegmentsByTxSeq(segments, uploadTask.txSeq)
 
                 if (res === null) {
-                    return new Error('Failed to upload segments')
+                    const errorMsg = `Failed to upload segments to node ${this.nodes[uploadTask.clientIndex].url} - received null response`
+                    console.log(errorMsg)
+                    return new Error(errorMsg)
                 }
 
                 return res
             } catch (error: any) {
+                console.log(`Upload error (attempt ${attempt + 1}/${maxRetries + 1}) to node ${this.nodes[uploadTask.clientIndex].url}:`, error.message || error)
+
                 const errorMessage = error?.message?.toLowerCase() || ''
                 const isTooManyDataError = errorMessage.includes('too many data writing')
 
