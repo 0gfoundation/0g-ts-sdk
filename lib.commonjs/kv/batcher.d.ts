@@ -8,6 +8,9 @@ export declare class Batcher {
     flow: FixedPriceFlow;
     blockchainRpc: string;
     constructor(version: number, clients: StorageNode[], flow: FixedPriceFlow, provider: string);
-    exec(opts?: UploadOption): Promise<[string, Error | null]>;
+    exec(opts?: UploadOption): Promise<[{
+        txHash: string;
+        rootHash: string;
+    }, Error | null]>;
 }
 //# sourceMappingURL=batcher.d.ts.map

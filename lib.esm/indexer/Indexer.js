@@ -67,7 +67,7 @@ export class Indexer extends HttpProvider {
         }
         let [uploader, err] = await this.newUploaderFromIndexerNodes(blockchain_rpc, signer, expectedReplica, opts);
         if (err != null || uploader == null) {
-            return ['', err];
+            return [{ txHash: '', rootHash: '' }, err];
         }
         if (uploadOpts === undefined) {
             uploadOpts = {

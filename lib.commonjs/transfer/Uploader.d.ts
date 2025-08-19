@@ -13,15 +13,22 @@ export declare class Uploader {
     gasPrice: bigint;
     gasLimit: bigint;
     constructor(nodes: StorageNode[], providerRpc: string, flow: FixedPriceFlow, gasPrice?: bigint, gasLimit?: bigint);
-    checkExistence(root: string): Promise<boolean>;
-    uploadFile(file: AbstractFile, opts: UploadOption, retryOpts?: RetryOpts): Promise<[string, Error | null]>;
+    uploadFile(file: AbstractFile, opts: UploadOption, retryOpts?: RetryOpts): Promise<[{
+        txHash: string;
+        rootHash: string;
+    }, Error | null]>;
+    private submitTransaction;
+    private findExistingFileInfo;
     processLogs(receipt: ethers.TransactionReceipt): Promise<number[]>;
     waitForReceipt(txHash: string, opts?: RetryOpts): Promise<ethers.TransactionReceipt | null>;
     waitForLogEntry(txSeq: number, finalityRequired: boolean): Promise<FileInfo | null>;
-    processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[]): Promise<(number | Error)[]>;
+    processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[], retryOpts?: RetryOpts): Promise<(number | Error)[]>;
     nextSgmentIndex(config: ShardConfig, startIndex: number): number;
-    segmentUpload(info: FileInfo, file: AbstractFile, tree: MerkleTree, opts: UploadOption): Promise<UploadTask[] | null>;
+    splitTasks(info: FileInfo, tree: MerkleTree, opts: UploadOption): Promise<UploadTask[] | null>;
     getSegment(file: AbstractFile, tree: MerkleTree, segIndex: number): Promise<[boolean, SegmentWithProof | null, Error | null]>;
-    uploadTask(file: AbstractFile, tree: MerkleTree, uploadTask: UploadTask): Promise<number | Error>;
+    uploadTask(file: AbstractFile, tree: MerkleTree, uploadTask: UploadTask, retryOpts?: RetryOpts): Promise<number | Error>;
+    private isAlreadyUploadedError;
+    private isRetryableError;
+    private getErrorType;
 }
 //# sourceMappingURL=Uploader.d.ts.map

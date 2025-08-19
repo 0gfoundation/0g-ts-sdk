@@ -99,7 +99,7 @@ export class Indexer extends HttpProvider {
         uploadOpts?: UploadOption,
         retryOpts?: RetryOpts,
         opts?: TransactionOptions
-    ): Promise<[string, Error | null]> {
+    ): Promise<[{ txHash: string; rootHash: string }, Error | null]> {
         var expectedReplica = 1
         if (uploadOpts != undefined && uploadOpts.expectedReplica != null) {
             expectedReplica = Math.max(1, uploadOpts.expectedReplica)
@@ -111,7 +111,7 @@ export class Indexer extends HttpProvider {
             opts
         )
         if (err != null || uploader == null) {
-            return ['', err]
+            return [{ txHash: '', rootHash: '' }, err]
         }
         if (uploadOpts === undefined) {
             uploadOpts = {
