@@ -70,10 +70,7 @@ async function txWithGasAdjustment(contract, provider, method, params, txOpts, r
             let resp = await contract
                 .getFunction(method)
                 .send(...params, txOpts);
-            const tx = (await Promise.race([
-                resp.wait(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction timeout')), constant_js_1.TIMEOUT_MS)),
-            ]));
+            const tx = await resp.wait();
             if (tx === null) {
                 throw new Error('Send transaction timeout');
             }

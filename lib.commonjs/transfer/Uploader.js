@@ -19,29 +19,71 @@ class Uploader {
         this.gasPrice = gasPrice;
         this.gasLimit = gasLimit;
     }
-    async checkExistence(root) {
-        for (let client of this.nodes) {
-            let info = await client.getFileInfo(root, true);
-            if (info !== null && info.finalized) {
-                return true;
-            }
-        }
-        return false;
-    }
     async uploadFile(file, opts, retryOpts) {
         var [tree, err] = await file.merkleTree();
         if (err != null || tree == null || tree.rootHash() == null) {
-            return ['', new Error('Failed to create Merkle tree')];
+            return [
+                { txHash: '', rootHash: '' },
+                new Error('Failed to create Merkle tree'),
+            ];
         }
-        console.log('Data prepared to upload', 'root=' + tree.rootHash(), 'size=' + file.size(), 'numSegments=' + file.numSegments(), 'numChunks=' + file.numChunks());
-        const exist = await this.checkExistence(tree.rootHash());
-        if (exist) {
-            return ['', new Error('Data already exists')];
+        const rootHash = tree.rootHash();
+        console.log('Data prepared to upload', 'root=' + rootHash, 'size=' + file.size(), 'numSegments=' + file.numSegments(), 'numChunks=' + file.numChunks());
+        let txSeq = null;
+        let receipt = null;
+        let info = await this.findExistingFileInfo(rootHash);
+        if (!opts.skipTx || info === null) {
+            var [submission, err] = await file.createSubmission(opts.tags);
+            if (err !== null || submission === null) {
+                return [
+                    { txHash: '', rootHash },
+                    new Error('Failed to create submission'),
+                ];
+            }
+            const [txReceipt, txErr] = await this.submitTransaction(submission, opts, retryOpts);
+            if (txErr !== null) {
+                return [{ txHash: '', rootHash }, txErr];
+            }
+            receipt = txReceipt;
+            console.log('Transaction hash:', receipt.hash);
+            const txSeqs = await this.processLogs(receipt);
+            if (txSeqs.length === 0) {
+                return [
+                    { txHash: '', rootHash },
+                    new Error('Failed to get txSeqs'),
+                ];
+            }
+            console.log('Transaction sequence number:', txSeqs[0]);
+            txSeq = txSeqs[0];
+            info = await this.waitForLogEntry(txSeq, false);
         }
-        var [submission, err] = await file.createSubmission(opts.tags);
-        if (err !== null || submission === null) {
-            return ['', new Error('Failed to create submission')];
+        const txHash = receipt ? receipt.hash : '';
+        if (info === null) {
+            return [{ txHash, rootHash }, new Error('Failed to get log entry')];
         }
+        const tasks = await this.splitTasks(info, tree, opts);
+        if (tasks === null) {
+            return [
+                { txHash, rootHash },
+                new Error('Failed to get upload tasks'),
+            ];
+        }
+        if (tasks.length === 0) {
+            return [{ txHash, rootHash }, null];
+        }
+        console.log('Processing tasks in parallel with ', tasks.length, ' tasks...');
+        const results = await this.processTasksInParallel(file, tree, tasks, retryOpts);
+        // Check if any task failed
+        for (let i = 0; i < results.length; i++) {
+            if (results[i] instanceof Error) {
+                return [{ txHash, rootHash }, results[i]];
+            }
+        }
+        console.log('All tasks processed');
+        await this.waitForLogEntry(info.tx.seq, true);
+        return [{ txHash, rootHash }, null];
+    }
+    async submitTransaction(submission, opts, retryOpts) {
         let marketAddr = await this.flow.market();
         let marketContract = (0, utils_js_1.getMarketContract)(marketAddr, this.provider);
         let pricePerSector = await marketContract.pricePerSector();
@@ -63,7 +105,7 @@ class Uploader {
             let suggestedGasPrice = (await this.provider.getFeeData()).gasPrice;
             if (suggestedGasPrice === null) {
                 return [
-                    '',
+                    null,
                     new Error('Failed to get suggested gas price, set your own gas price'),
                 ];
             }
@@ -73,35 +115,28 @@ class Uploader {
             txOpts.gasLimit = this.gasLimit;
         }
         console.log('Submitting transaction with storage fee:', fee);
-        var [receipt, err] = await (0, utils_js_1.txWithGasAdjustment)(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
-        if (receipt === null || err !== null) {
-            return ['', new Error('Failed to submit transaction: ' + err)];
+        var [txReceipt, txErr] = await (0, utils_js_1.txWithGasAdjustment)(this.flow, this.provider, 'submit', [submission], txOpts, retryOpts);
+        if (txReceipt === null || txErr !== null) {
+            return [null, new Error('Failed to submit transaction: ' + txErr)];
         }
-        console.log('Transaction hash:', receipt.hash);
-        const txSeqs = await this.processLogs(receipt);
-        if (txSeqs.length === 0) {
-            return ['', new Error('Failed to get txSeqs')];
+        return [txReceipt, null];
+    }
+    async findExistingFileInfo(rootHash) {
+        console.log('Attempting to find existing file info by root hash...');
+        // Try to get file info from storage nodes
+        for (let client of this.nodes) {
+            try {
+                const info = await client.getFileInfo(rootHash, false);
+                if (info !== null) {
+                    console.log('Found existing file info:', info);
+                    return info;
+                }
+            }
+            catch (e) {
+                console.log('Failed to get file info from node:', client.url);
+            }
         }
-        console.log('Transaction sequence number:', txSeqs[0]);
-        let info = await this.waitForLogEntry(txSeqs[0], false);
-        if (info === null) {
-            return ['', new Error('Failed to get log entry')];
-        }
-        const tasks = await this.segmentUpload(info, file, tree, opts);
-        if (tasks === null) {
-            return ['', new Error('Failed to get upload tasks')];
-        }
-        console.log('Processing tasks in parallel with ', tasks.length, ' tasks...');
-        err = await this.processTasksInParallel(file, tree, tasks)
-            .then(() => console.log('All tasks processed'))
-            .catch((error) => {
-            return error;
-        });
-        if (err !== undefined) {
-            return ['', err];
-        }
-        await this.waitForLogEntry(info.tx.seq, true);
-        return [receipt.hash, null];
+        return null;
     }
     async processLogs(receipt) {
         const contractAddress = (await this.flow.getAddress()).toLowerCase();
@@ -184,8 +219,8 @@ class Uploader {
         return info;
     }
     // Function to process all tasks in parallel
-    async processTasksInParallel(file, tree, tasks) {
-        const taskPromises = tasks.map((task) => this.uploadTask(file, tree, task));
+    async processTasksInParallel(file, tree, tasks, retryOpts) {
+        const taskPromises = tasks.map((task) => this.uploadTask(file, tree, task, retryOpts));
         return await Promise.all(taskPromises);
     }
     nextSgmentIndex(config, startIndex) {
@@ -197,7 +232,7 @@ class Uploader {
             config.numShard +
             config.shardId);
     }
-    async segmentUpload(info, file, tree, opts) {
+    async splitTasks(info, tree, opts) {
         const shardConfigs = await (0, utils_js_2.getShardConfigs)(this.nodes);
         if (shardConfigs === null) {
             console.log('Failed to get shard configs');
@@ -234,7 +269,7 @@ class Uploader {
             }
         }
         if (uploadTasks.length === 0) {
-            return null;
+            return [];
         }
         console.log('Tasks created:', uploadTasks);
         var tasks = [];
@@ -277,7 +312,7 @@ class Uploader {
         };
         return [allDataUploaded, segWithProof, null];
     }
-    async uploadTask(file, tree, uploadTask) {
+    async uploadTask(file, tree, uploadTask, retryOpts) {
         let segIndex = uploadTask.segIndex;
         var segments = [];
         for (let i = 0; i < uploadTask.taskSize; i += 1) {
@@ -293,11 +328,77 @@ class Uploader {
             }
             segIndex += uploadTask.numShard;
         }
-        let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
-        if (res === null) {
-            return new Error('Failed to upload segments');
+        // Retry logic for "too many data writing" errors
+        const maxRetries = retryOpts?.TooManyDataRetries ?? 3; // Default to 3 retries
+        let attempt = 0;
+        let lastError = null;
+        while (attempt < maxRetries) {
+            try {
+                let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
+                if (res === null) {
+                    throw new Error(`Node ${this.nodes[uploadTask.clientIndex].url} returned null for upload segments`);
+                }
+                return res;
+            }
+            catch (error) {
+                lastError = error;
+                const nodeUrl = this.nodes[uploadTask.clientIndex].url;
+                // Handle "already uploaded and finalized" as success
+                if (this.isAlreadyUploadedError(error)) {
+                    console.log(`Segments already uploaded and finalized on node ${nodeUrl}`);
+                    return 0; // Return success
+                }
+                // Handle retryable errors
+                if (this.isRetryableError(error)) {
+                    if (attempt < maxRetries - 1) {
+                        const waitTime = (retryOpts?.Interval ?? 3) * 1000 * (attempt + 1);
+                        const errorType = this.getErrorType(error);
+                        console.log(`${errorType} on attempt ${attempt + 1}/${maxRetries}. Retrying in ${waitTime / 1000}s...`);
+                        await new Promise((resolve) => setTimeout(resolve, waitTime));
+                        attempt++;
+                        continue;
+                    }
+                    else {
+                        const errorMessage = error instanceof Error ? error.message : String(error);
+                        console.log(`Max retries (${maxRetries}) reached for error: ${errorMessage}`);
+                        return new Error(`Failed after ${maxRetries} attempts: ${errorMessage}`);
+                    }
+                }
+                else {
+                    // Non-retryable error - fail immediately
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.log(`Non-retryable error encountered: ${errorMessage}`);
+                    return lastError;
+                }
+            }
         }
-        return res;
+        const finalError = lastError ||
+            new Error(`Upload failed after ${maxRetries} attempts to node ${this.nodes[uploadTask.clientIndex].url}`);
+        console.log(`Upload task failed completely:`, finalError.message);
+        return finalError;
+    }
+    isAlreadyUploadedError(error) {
+        return (error instanceof Error &&
+            (error.data?.includes?.('already uploaded and finalized') ||
+                (error.message.includes('Invalid params') &&
+                    error.data === 'already uploaded and finalized')));
+    }
+    isRetryableError(error) {
+        return (error instanceof Error &&
+            (error.message.includes('too many data writing') ||
+                error.message.includes('returned null for upload segments') ||
+                error.data?.message?.includes('too many data writing')));
+    }
+    getErrorType(error) {
+        if (error.message.includes('too many data writing')) {
+            return '"too many data writing" error';
+        }
+        else if (error.message.includes('returned null')) {
+            return 'null response error';
+        }
+        else {
+            return 'retryable error';
+        }
     }
 }
 exports.Uploader = Uploader;

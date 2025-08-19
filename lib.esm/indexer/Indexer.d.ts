@@ -13,7 +13,10 @@ export declare class Indexer extends HttpProvider {
     getFileLocations(rootHash: string): Promise<ShardedNode[]>;
     newUploaderFromIndexerNodes(blockchain_rpc: string, signer: ethers.Wallet, expectedReplica: number, opts?: TransactionOptions): Promise<[Uploader | null, Error | null]>;
     selectNodes(expectedReplica: number): Promise<[StorageNode[], Error | null]>;
-    upload(file: AbstractFile, blockchain_rpc: string, signer: ethers.Wallet, uploadOpts?: UploadOption, retryOpts?: RetryOpts, opts?: TransactionOptions): Promise<[string, Error | null]>;
+    upload(file: AbstractFile, blockchain_rpc: string, signer: ethers.Wallet, uploadOpts?: UploadOption, retryOpts?: RetryOpts, opts?: TransactionOptions): Promise<[{
+        txHash: string;
+        rootHash: string;
+    }, Error | null]>;
     download(rootHash: string, filePath: string, proof: boolean): Promise<Error | null>;
 }
 //# sourceMappingURL=Indexer.d.ts.map

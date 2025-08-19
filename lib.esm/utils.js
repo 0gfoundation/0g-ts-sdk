@@ -2,7 +2,7 @@ import { FixedPriceFlow__factory } from './contracts/flow/index.js';
 import { FixedPrice__factory } from './contracts/market/index.js';
 import fs from 'fs';
 import path from 'path';
-import { DEFAULT_CHUNK_SIZE, DEFAULT_SEGMENT_MAX_CHUNKS, TIMEOUT_MS, } from './constant.js';
+import { DEFAULT_CHUNK_SIZE, DEFAULT_SEGMENT_MAX_CHUNKS } from './constant.js';
 export function getFlowContract(address, signer) {
     return FixedPriceFlow__factory.connect(address, signer);
 }
@@ -59,10 +59,7 @@ export async function txWithGasAdjustment(contract, provider, method, params, tx
             let resp = await contract
                 .getFunction(method)
                 .send(...params, txOpts);
-            const tx = (await Promise.race([
-                resp.wait(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction timeout')), TIMEOUT_MS)),
-            ]));
+            const tx = await resp.wait();
             if (tx === null) {
                 throw new Error('Send transaction timeout');
             }

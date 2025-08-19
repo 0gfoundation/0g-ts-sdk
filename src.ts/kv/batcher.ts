@@ -26,7 +26,9 @@ export class Batcher {
         this.blockchainRpc = provider
     }
 
-    async exec(opts?: UploadOption): Promise<[string, Error | null]> {
+    async exec(
+        opts?: UploadOption
+    ): Promise<[{ txHash: string; rootHash: string }, Error | null]> {
         // build stream data
         const streamData = this.streamDataBuilder.build()
         const encoded = streamData.encode()
