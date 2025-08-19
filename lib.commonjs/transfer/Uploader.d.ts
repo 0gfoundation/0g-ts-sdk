@@ -18,7 +18,7 @@ export declare class Uploader {
     processLogs(receipt: ethers.TransactionReceipt): Promise<number[]>;
     waitForReceipt(txHash: string, opts?: RetryOpts): Promise<ethers.TransactionReceipt | null>;
     waitForLogEntry(txSeq: number, finalityRequired: boolean): Promise<FileInfo | null>;
-    processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[], retryOpts?: RetryOpts): Promise<(number | Error)[]>;
+    processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[], retryOpts?: RetryOpts): Promise<Error | null>;
     nextSgmentIndex(config: ShardConfig, startIndex: number): number;
     segmentUpload(info: FileInfo, file: AbstractFile, tree: MerkleTree, opts: UploadOption): Promise<UploadTask[] | null>;
     getSegment(file: AbstractFile, tree: MerkleTree, segIndex: number): Promise<[boolean, SegmentWithProof | null, Error | null]>;

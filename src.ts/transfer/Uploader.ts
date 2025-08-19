@@ -164,12 +164,8 @@ export class Uploader {
         )
 
         err = await this.processTasksInParallel(file, tree, tasks, retryOpts)
-            .then(() => console.log('All tasks processed'))
-            .catch((error) => {
-                return error
-            })
 
-        if (err !== undefined) {
+        if (err !== null) {
             return ['', err]
         }
 
@@ -291,11 +287,27 @@ export class Uploader {
         tree: MerkleTree,
         tasks: UploadTask[],
         retryOpts?: RetryOpts
-    ): Promise<(number | Error)[]> {
+    ): Promise<Error | null> {
         const taskPromises = tasks.map((task) =>
             this.uploadTask(file, tree, task, retryOpts)
         )
-        return await Promise.all(taskPromises)
+
+        try {
+            const results = await Promise.all(taskPromises)
+
+            // Check if any task failed
+            const errors = results.filter(result => result instanceof Error)
+            if (errors.length > 0) {
+                console.log(`${errors.length} out of ${results.length} tasks failed`)
+                // Return the first error found
+                return errors[0]
+            }
+
+            console.log('All tasks processed successfully')
+            return null
+        } catch (error) {
+            return error instanceof Error ? error : new Error(String(error))
+        }
     }
 
     nextSgmentIndex(config: ShardConfig, startIndex: number): number {

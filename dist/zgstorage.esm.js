@@ -24459,12 +24459,8 @@ class Uploader {
             return ['', new Error('Failed to get upload tasks')];
         }
         console.log('Processing tasks in parallel with ', tasks.length, ' tasks...');
-        err = await this.processTasksInParallel(file, tree, tasks, retryOpts)
-            .then(() => console.log('All tasks processed'))
-            .catch((error) => {
-            return error;
-        });
-        if (err !== undefined) {
+        err = await this.processTasksInParallel(file, tree, tasks, retryOpts);
+        if (err !== null) {
             return ['', err];
         }
         await this.waitForLogEntry(info.tx.seq, true);
@@ -24553,7 +24549,21 @@ class Uploader {
     // Function to process all tasks in parallel
     async processTasksInParallel(file, tree, tasks, retryOpts) {
         const taskPromises = tasks.map((task) => this.uploadTask(file, tree, task, retryOpts));
-        return await Promise.all(taskPromises);
+        try {
+            const results = await Promise.all(taskPromises);
+            // Check if any task failed
+            const errors = results.filter(result => result instanceof Error);
+            if (errors.length > 0) {
+                console.log(`${errors.length} out of ${results.length} tasks failed`);
+                // Return the first error found
+                return errors[0];
+            }
+            console.log('All tasks processed successfully');
+            return null;
+        }
+        catch (error) {
+            return error instanceof Error ? error : new Error(String(error));
+        }
     }
     nextSgmentIndex(config, startIndex) {
         if (config.numShard < 2) {
@@ -24661,8 +24671,8 @@ class Uploader {
             segIndex += uploadTask.numShard;
         }
         // Retry logic for "too many data writing" errors
-        const maxRetries = retryOpts?.TooManyDataRetries ?? 3; // Default to 3 retries
-        const retryInterval = retryOpts?.Interval ?? 5; // Default to 5 second intervals
+        const maxRetries = retryOpts?.TooManyDataRetries ?? 3;
+        const retryInterval = retryOpts?.Interval ?? 5;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
@@ -24680,7 +24690,6 @@ class Uploader {
                     continue;
                 }
                 else {
-                    // If it's not a retryable error or we've exhausted retries, return the error
                     return error instanceof Error ? error : new Error(String(error));
                 }
             }
