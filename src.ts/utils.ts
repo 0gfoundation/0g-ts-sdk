@@ -95,8 +95,8 @@ export async function txWithGasAdjustment(
         try {
             let resp = await contract
                 .getFunction(method)
-       
-       
+
+
                 .send(...params, txOpts)
             const tx = (await Promise.race([
                 resp.wait(),
@@ -111,6 +111,8 @@ export async function txWithGasAdjustment(
             if (tx === null) {
                 throw new Error('Send transaction timeout')
             }
+
+            console.log(tx)
 
             let receipt = await waitForReceipt(provider, tx.hash, retryOpts)
             if (receipt === null) {
@@ -143,8 +145,8 @@ async function waitForReceipt(
 ): Promise<ethers.TransactionReceipt | null> {
     var receipt: ethers.TransactionReceipt | null = null
 
-    if (opts === undefined) {
-        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0 }
+    if (opts === undefined || opts === null) {
+        opts = { Retries: 10, Interval: 5, MaxGasPrice: 0, TooManyDataRetries: 3 }
     }
     if (opts.Retries === undefined || opts.Retries === 0) {
         opts.Retries = 10
@@ -157,12 +159,13 @@ async function waitForReceipt(
     let nTries = 0
 
     while (nTries < opts.Retries) {
+        await delay(opts.Interval * 1000)
         receipt = await provider.getTransactionReceipt(txHash)
 
         if (receipt !== null && receipt.status == 1) {
             return receipt
         }
-        await delay(opts.Interval * 1000)
+        
         nTries++
     }
 
