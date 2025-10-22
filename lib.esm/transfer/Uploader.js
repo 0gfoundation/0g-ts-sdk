@@ -356,7 +356,9 @@ export class Uploader {
                         continue;
                     }
                     else {
-                        const errorMessage = error instanceof Error ? error.message : String(error);
+                        const errorMessage = error instanceof Error
+                            ? error.message
+                            : String(error);
                         console.log(`Max retries (${maxRetries}) reached for error: ${errorMessage}`);
                         return new Error(`Failed after ${maxRetries} attempts: ${errorMessage}`);
                     }
