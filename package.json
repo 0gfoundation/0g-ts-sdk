@@ -1,6 +1,6 @@
 {
   "name": "@0glabs/0g-ts-sdk",
-  "version": "0.2.9",
+  "version": "0.3.3",
   "description": "JS SDK for 0G Storage",
   "exports": {
     ".": {

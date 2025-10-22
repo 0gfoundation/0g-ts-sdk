@@ -5,7 +5,7 @@ import { UploadOption, Uploader, Downloader } from '../transfer/index.js'
 import { StorageNode } from '../node/index.js'
 import { RetryOpts } from '../types.js'
 import { AbstractFile } from '../file/AbstractFile.js'
-import { ethers } from 'ethers'
+import { Signer } from 'ethers'
 import { getFlowContract } from '../utils.js'
 
 export class Indexer extends HttpProvider {
@@ -37,7 +37,7 @@ export class Indexer extends HttpProvider {
 
     async newUploaderFromIndexerNodes(
         blockchain_rpc: string,
-        signer: ethers.Wallet,
+        signer: Signer,
         expectedReplica: number,
         opts?: TransactionOptions
     ): Promise<[Uploader | null, Error | null]> {
@@ -95,7 +95,7 @@ export class Indexer extends HttpProvider {
     async upload(
         file: AbstractFile,
         blockchain_rpc: string,
-        signer: ethers.Wallet,
+        signer: Signer,
         uploadOpts?: UploadOption,
         retryOpts?: RetryOpts,
         opts?: TransactionOptions

@@ -5,15 +5,15 @@ import { UploadOption, Uploader } from '../transfer/index.js';
 import { StorageNode } from '../node/index.js';
 import { RetryOpts } from '../types.js';
 import { AbstractFile } from '../file/AbstractFile.js';
-import { ethers } from 'ethers';
+import { Signer } from 'ethers';
 export declare class Indexer extends HttpProvider {
     constructor(url: string);
     getShardedNodes(): Promise<ShardedNodes>;
     getNodeLocations(): Promise<Map<string, IpLocation>>;
     getFileLocations(rootHash: string): Promise<ShardedNode[]>;
-    newUploaderFromIndexerNodes(blockchain_rpc: string, signer: ethers.Wallet, expectedReplica: number, opts?: TransactionOptions): Promise<[Uploader | null, Error | null]>;
+    newUploaderFromIndexerNodes(blockchain_rpc: string, signer: Signer, expectedReplica: number, opts?: TransactionOptions): Promise<[Uploader | null, Error | null]>;
     selectNodes(expectedReplica: number): Promise<[StorageNode[], Error | null]>;
-    upload(file: AbstractFile, blockchain_rpc: string, signer: ethers.Wallet, uploadOpts?: UploadOption, retryOpts?: RetryOpts, opts?: TransactionOptions): Promise<[{
+    upload(file: AbstractFile, blockchain_rpc: string, signer: Signer, uploadOpts?: UploadOption, retryOpts?: RetryOpts, opts?: TransactionOptions): Promise<[{
         txHash: string;
         rootHash: string;
     }, Error | null]>;
