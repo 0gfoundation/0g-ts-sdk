@@ -7,13 +7,22 @@ export interface UploadTask {
     txSeq: number;
 }
 export interface UploadOption {
-    tags: ethers.BytesLike;
-    finalityRequired: boolean;
-    taskSize: number;
-    expectedReplica: number;
-    skipTx: boolean;
-    fee: bigint;
+    tags?: ethers.BytesLike;
+    finalityRequired?: boolean;
+    taskSize?: number;
+    expectedReplica?: number;
+    fragmentSize?: number;
+    skipTx?: boolean;
+    fee?: bigint;
     nonce?: bigint;
 }
-export declare var defaultUploadOption: UploadOption;
+export declare const defaultUploadOption: Omit<Required<UploadOption>, 'nonce'> & {
+    nonce?: bigint;
+};
+/**
+ * Merges user-provided upload options with default values
+ */
+export declare function mergeUploadOptions(userOptions?: UploadOption): Required<Omit<UploadOption, 'nonce'>> & {
+    nonce?: bigint;
+};
 //# sourceMappingURL=types.d.ts.map

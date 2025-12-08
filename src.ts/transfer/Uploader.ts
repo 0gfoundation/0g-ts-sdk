@@ -2,6 +2,7 @@ import {
     DEFAULT_SEGMENT_SIZE,
     DEFAULT_SEGMENT_MAX_CHUNKS,
     DEFAULT_CHUNK_SIZE,
+    DEFAULT_BATCH_SIZE,
 } from '../constant.js'
 import { StorageNode, SegmentWithProof, FileInfo } from '../node/index.js'
 import {
@@ -16,10 +17,10 @@ import {
     txWithGasAdjustment,
 } from '../utils.js'
 import { RetryOpts } from '../types.js'
-import { MerkleTree } from '../file/index.js'
+import { MerkleTree, nextPow2 } from '../file/index.js'
 import { encodeBase64, ethers } from 'ethers'
 import { calculatePrice, getShardConfigs } from './utils.js'
-import { UploadOption, UploadTask } from './types.js'
+import { UploadOption, UploadTask, mergeUploadOptions } from './types.js'
 import { AbstractFile } from '../file/AbstractFile.js'
 import { checkReplica, ShardConfig } from '../common/index.js'
 
@@ -56,7 +57,7 @@ export class Uploader {
         if (err != null || tree == null || tree.rootHash() == null) {
             return [
                 { txHash: '', rootHash: '' },
-                new Error('Failed to create Merkle tree'),
+                new Error('Failed to create Merkle tree, ' + err),
             ]
         }
 
@@ -66,7 +67,7 @@ export class Uploader {
             'Data prepared to upload',
             'root=' + rootHash,
             'size=' + file.size(),
-            'numSegments=' + file.numSegments(),
+            'numSegments=' + file.numSegmentsPadded(),
             'numChunks=' + file.numChunks()
         )
 
@@ -75,7 +76,7 @@ export class Uploader {
         let info = await this.findExistingFileInfo(rootHash)
 
         if (!opts.skipTx || info === null) {
-            var [submission, err] = await file.createSubmission(opts.tags)
+            var [submission, err] = await file.createSubmission(opts.tags!)
             if (err !== null || submission === null) {
                 return [
                     { txHash: '', rootHash },
@@ -152,19 +153,89 @@ export class Uploader {
         return [{ txHash, rootHash }, null]
     }
 
+    /**
+     * Upload file with automatic splitting into fragments if it exceeds fragmentSize
+     * @param file File to upload
+     * @param fragmentSize Maximum size of each fragment
+     * @param opts Upload options
+     * @param retryOpts Retry options
+     * @returns Promise resolving to arrays of transaction hashes and root hashes
+     */
+    async splitableUpload(
+        file: AbstractFile,
+        opts: UploadOption = {},
+        retryOpts?: RetryOpts
+    ): Promise<[{ txHashes: string[]; rootHashes: string[] }, Error | null]> {
+        const mergedOpts = mergeUploadOptions(opts)
+
+        // Check fragment size
+        if (mergedOpts.fragmentSize < DEFAULT_CHUNK_SIZE) {
+            mergedOpts.fragmentSize = DEFAULT_CHUNK_SIZE
+        }
+
+        // Align size of fragment to 2 power
+
+        mergedOpts.fragmentSize = nextPow2(mergedOpts.fragmentSize)
+
+        const txHashes: string[] = []
+        const rootHashes: string[] = []
+
+        if (file.size() <= mergedOpts.fragmentSize) {
+            // Single file upload
+            const [result, err] = await this.uploadFile(
+                file,
+                mergedOpts,
+                retryOpts
+            )
+            if (err != null) {
+                return [{ txHashes, rootHashes }, err]
+            }
+            txHashes.push(result.txHash)
+            rootHashes.push(result.rootHash)
+        } else {
+            // Split and batch upload
+            const fragments = file.split(mergedOpts.fragmentSize)
+            console.log(
+                `Splitted origin file into ${fragments.length} fragments, ${mergedOpts.fragmentSize} bytes each.`
+            )
+
+            for (let l = 0; l < fragments.length; l += DEFAULT_BATCH_SIZE) {
+                const r = Math.min(l + DEFAULT_BATCH_SIZE, fragments.length)
+                console.log(`Batch uploading fragments ${l} to ${r}...`)
+
+                // Process fragments sequentially to maintain order
+                for (let i = l; i < r; i++) {
+                    const [result, err] = await this.uploadFile(
+                        fragments[i],
+                        mergedOpts,
+                        retryOpts
+                    )
+                    if (err != null) {
+                        return [{ txHashes, rootHashes }, err]
+                    }
+                    txHashes.push(result.txHash)
+                    rootHashes.push(result.rootHash)
+                }
+            }
+        }
+
+        return [{ txHashes, rootHashes }, null]
+    }
+
     private async submitTransaction(
         submission: SubmissionStruct,
-        opts: UploadOption,
+        opts: UploadOption = {},
         retryOpts?: RetryOpts
     ): Promise<[any, Error | null]> {
+        const mergedOpts = mergeUploadOptions(opts)
         let marketAddr = await this.flow.market()
         let marketContract = getMarketContract(marketAddr, this.provider)
 
         let pricePerSector = await marketContract.pricePerSector()
 
         let fee: bigint = BigInt('0')
-        if (opts.fee > 0) {
-            fee = opts.fee
+        if (mergedOpts.fee > 0) {
+            fee = mergedOpts.fee
         } else {
             fee = calculatePrice(submission, pricePerSector)
         }
@@ -176,7 +247,7 @@ export class Uploader {
             nonce?: bigint
         } = {
             value: fee,
-            nonce: opts.nonce,
+            nonce: mergedOpts.nonce,
         }
 
         if (this.gasPrice > 0) {
@@ -374,15 +445,16 @@ export class Uploader {
     async splitTasks(
         info: FileInfo,
         tree: MerkleTree,
-        opts: UploadOption
+        opts: UploadOption = {}
     ): Promise<UploadTask[] | null> {
+        const mergedOpts = mergeUploadOptions(opts)
         const shardConfigs = await getShardConfigs(this.nodes)
         if (shardConfigs === null) {
             console.log('Failed to get shard configs')
             return null
         }
 
-        if (!checkReplica(shardConfigs, opts.expectedReplica)) {
+        if (!checkReplica(shardConfigs, mergedOpts.expectedReplica)) {
             console.log('Not enough replicas')
             return null
         }
@@ -406,11 +478,6 @@ export class Uploader {
                 true
             )
             if (cInfo !== null && cInfo.finalized) {
-                console.log(
-                    'File already exists on node',
-                    this.nodes[clientIndex].url,
-                    cInfo
-                )
                 continue
             }
             var tasks: UploadTask[] = []
@@ -419,12 +486,12 @@ export class Uploader {
             while (segIndex <= endSegmentIndex) {
                 tasks.push({
                     clientIndex,
-                    taskSize: opts.taskSize,
+                    taskSize: mergedOpts.taskSize,
                     segIndex: segIndex - startSegmentIndex,
                     numShard: shardConfig.numShard,
                     txSeq,
                 })
-                segIndex += shardConfig.numShard * opts.taskSize
+                segIndex += shardConfig.numShard * mergedOpts.taskSize
             }
 
             if (tasks.length > 0) {
@@ -535,6 +602,7 @@ export class Uploader {
 
         // Retry logic for "too many data writing" errors
         const maxRetries = retryOpts?.TooManyDataRetries ?? 3 // Default to 3 retries
+        const waitTime = (retryOpts?.Interval ?? 1) * 1000 // Default to 1 second
         let attempt = 0
         let lastError: Error | null = null
 
@@ -543,14 +611,6 @@ export class Uploader {
                 let res = await this.nodes[
                     uploadTask.clientIndex
                 ].uploadSegmentsByTxSeq(segments, uploadTask.txSeq)
-
-                if (res === null) {
-                    throw new Error(
-                        `Node ${
-                            this.nodes[uploadTask.clientIndex].url
-                        } returned null for upload segments`
-                    )
-                }
 
                 return res
             } catch (error) {
@@ -568,8 +628,6 @@ export class Uploader {
                 // Handle retryable errors
                 if (this.isRetryableError(error)) {
                     if (attempt < maxRetries - 1) {
-                        const waitTime =
-                            (retryOpts?.Interval ?? 3) * 1000 * (attempt + 1)
                         const errorType = this.getErrorType(error)
 
                         console.log(

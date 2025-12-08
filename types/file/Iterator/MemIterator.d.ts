@@ -1,13 +1,14 @@
 import { Iterator } from './Iterator.js';
+import { AbstractFile } from '../AbstractFile.js';
 export declare class MemIterator implements Iterator {
-    dataArray: Uint8Array | null;
+    file: AbstractFile;
     buf: Uint8Array;
     bufSize: number;
     fileSize: number;
     paddedSize: number;
     offset: number;
     batchSize: number;
-    constructor(data: Uint8Array, fileSize: number, offset: number, batch: number, flowPadding: boolean);
+    constructor(file: AbstractFile, offset: number, batch: number, paddedSize: number);
     readFromFile(start: number, end: number): Promise<{
         bytesRead: number;
         buffer: Uint8Array;
