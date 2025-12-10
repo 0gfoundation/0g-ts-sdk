@@ -12,10 +12,12 @@ import {
     EMPTY_CHUNK_HASH,
     ZERO_HASH,
 } from '../constant.js'
-import { computePaddedSize, numSplits } from './utils.js'
+import { computePaddedSize, numSplits, iteratorPaddedSize } from './utils.js'
 
 export abstract class AbstractFile {
-    fileSize: number = 0
+    paddedSize_: number = 0
+    offset: number = 0
+    size_: number = 0
 
     // constructor() {}
 
@@ -51,15 +53,7 @@ export abstract class AbstractFile {
     }
 
     size(): number {
-        return this.fileSize
-    }
-
-    iterate(flowPadding: boolean): Iterator {
-        return this.iterateWithOffsetAndBatch(
-            0,
-            DEFAULT_SEGMENT_SIZE,
-            flowPadding
-        )
+        return this.size_
     }
 
     abstract iterateWithOffsetAndBatch(
@@ -68,8 +62,23 @@ export abstract class AbstractFile {
         flowPadding: boolean
     ): Iterator
 
+    /**
+     * Read data from the file at the given offset relative to this file's offset
+     * @param start Start position relative to this file's beginning
+     * @param end End position relative to this file's beginning
+     * @returns Promise with bytes read and buffer
+     */
+    abstract readFromFile(
+        start: number,
+        end: number
+    ): Promise<{ bytesRead: number; buffer: Uint8Array }>
+
     async merkleTree(): Promise<[MerkleTree | null, Error | null]> {
-        const iter = this.iterate(true)
+        const iter = this.iterateWithOffsetAndBatch(
+            0,
+            DEFAULT_SEGMENT_SIZE,
+            true
+        )
         const tree = new MerkleTree()
 
         while (true) {
@@ -83,6 +92,12 @@ export abstract class AbstractFile {
             }
             const current = iter.current()
             const segRoot = AbstractFile.segmentRoot(current)
+            console.log(
+                'Segment root at file offset',
+                this.offset,
+                ':',
+                segRoot
+            )
 
             tree.addLeafByHash(segRoot)
         }
@@ -97,6 +112,50 @@ export abstract class AbstractFile {
     numSegments(): number {
         return numSplits(this.size(), DEFAULT_SEGMENT_SIZE)
     }
+
+    paddedSize(): number {
+        return this.paddedSize_
+    }
+
+    numSegmentsPadded(): number {
+        return numSplits(this.paddedSize(), DEFAULT_SEGMENT_SIZE)
+    }
+
+    /**
+     * Split file into fragments of specified size
+     * @param fragmentSize Size of each fragment in bytes
+     * @returns Array of file fragments
+     */
+    split(fragmentSize: number): AbstractFile[] {
+        const fragments: AbstractFile[] = []
+
+        for (
+            let offset = this.offset;
+            offset < this.offset + this.size();
+            offset += fragmentSize
+        ) {
+            const size = Math.min(this.size() - offset, fragmentSize)
+            const fragmentPaddedSize = iteratorPaddedSize(size, true)
+            const fragment = this.createFragment(
+                offset,
+                size,
+                fragmentPaddedSize
+            )
+            fragments.push(fragment)
+        }
+
+        return fragments
+    }
+
+    /**
+     * Create a fragment of this file with given offset and size
+     * Subclasses should implement this method
+     */
+    protected abstract createFragment(
+        offset: number,
+        size: number,
+        paddedSize: number
+    ): AbstractFile
 
     async createSubmission(
         tags: BytesLike

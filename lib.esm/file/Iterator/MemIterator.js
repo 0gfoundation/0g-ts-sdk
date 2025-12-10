@@ -1,48 +1,26 @@
-import { numSplits, computePaddedSize, } from "../utils.js";
 import { DEFAULT_CHUNK_SIZE, } from '../../constant.js';
 export class MemIterator {
-    dataArray = null; // browser file
+    file;
     buf;
     bufSize = 0; // buffer content size
     fileSize;
     paddedSize; // total size including padding zeros
     offset = 0;
     batchSize;
-    constructor(data, fileSize, offset, batch, flowPadding) {
+    constructor(file, offset, batch, paddedSize) {
         if (batch % DEFAULT_CHUNK_SIZE > 0) {
             throw new Error("batch size should align with chunk size");
         }
         const buf = new Uint8Array(batch);
-        const chunks = numSplits(fileSize, DEFAULT_CHUNK_SIZE);
-        let paddedSize;
-        if (flowPadding) {
-            const [paddedChunks,] = computePaddedSize(chunks);
-            paddedSize = paddedChunks * DEFAULT_CHUNK_SIZE;
-        }
-        else {
-            paddedSize = chunks * DEFAULT_CHUNK_SIZE;
-        }
-        this.dataArray = data;
+        this.file = file;
         this.buf = buf;
-        this.fileSize = fileSize;
+        this.fileSize = file.size();
         this.paddedSize = paddedSize;
         this.batchSize = batch;
         this.offset = offset;
     }
     async readFromFile(start, end) {
-        if (start < 0 || start >= this.fileSize) {
-            throw new Error("invalid start offset");
-        }
-        if (end > this.fileSize) {
-            end = this.fileSize;
-        }
-        const buf = this.dataArray?.slice(start, end);
-        const buffer = new Uint8Array(this.batchSize);
-        buffer.set(new Uint8Array(buf));
-        return {
-            bytesRead: buf.byteLength,
-            buffer
-        };
+        return await this.file.readFromFile(start, end);
     }
     clearBuffer() {
         this.bufSize = 0;

@@ -1,8 +1,10 @@
 import { MerkleTree } from './MerkleTree.js';
 import { DEFAULT_CHUNK_SIZE, DEFAULT_SEGMENT_SIZE, DEFAULT_SEGMENT_MAX_CHUNKS, EMPTY_CHUNK_HASH, ZERO_HASH, } from '../constant.js';
-import { computePaddedSize, numSplits } from './utils.js';
+import { computePaddedSize, numSplits, iteratorPaddedSize } from './utils.js';
 export class AbstractFile {
-    fileSize = 0;
+    paddedSize_ = 0;
+    offset = 0;
+    size_ = 0;
     // constructor() {}
     // split a segment into chunks and compute the root hash
     static segmentRoot(segment, emptyChunksPadded = 0) {
@@ -24,13 +26,10 @@ export class AbstractFile {
         return ZERO_HASH; // TODO check this
     }
     size() {
-        return this.fileSize;
-    }
-    iterate(flowPadding) {
-        return this.iterateWithOffsetAndBatch(0, DEFAULT_SEGMENT_SIZE, flowPadding);
+        return this.size_;
     }
     async merkleTree() {
-        const iter = this.iterate(true);
+        const iter = this.iterateWithOffsetAndBatch(0, DEFAULT_SEGMENT_SIZE, true);
         const tree = new MerkleTree();
         while (true) {
             let [ok, err] = await iter.next();
@@ -42,6 +41,7 @@ export class AbstractFile {
             }
             const current = iter.current();
             const segRoot = AbstractFile.segmentRoot(current);
+            console.log('Segment root at file offset', this.offset, ':', segRoot);
             tree.addLeafByHash(segRoot);
         }
         return [tree.build(), null];
@@ -51,6 +51,27 @@ export class AbstractFile {
     }
     numSegments() {
         return numSplits(this.size(), DEFAULT_SEGMENT_SIZE);
+    }
+    paddedSize() {
+        return this.paddedSize_;
+    }
+    numSegmentsPadded() {
+        return numSplits(this.paddedSize(), DEFAULT_SEGMENT_SIZE);
+    }
+    /**
+     * Split file into fragments of specified size
+     * @param fragmentSize Size of each fragment in bytes
+     * @returns Array of file fragments
+     */
+    split(fragmentSize) {
+        const fragments = [];
+        for (let offset = this.offset; offset < this.offset + this.size(); offset += fragmentSize) {
+            const size = Math.min(this.size() - offset, fragmentSize);
+            const fragmentPaddedSize = iteratorPaddedSize(size, true);
+            const fragment = this.createFragment(offset, size, fragmentPaddedSize);
+            fragments.push(fragment);
+        }
+        return fragments;
     }
     async createSubmission(tags) {
         const submission = {

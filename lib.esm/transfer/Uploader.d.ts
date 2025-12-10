@@ -17,6 +17,18 @@ export declare class Uploader {
         txHash: string;
         rootHash: string;
     }, Error | null]>;
+    /**
+     * Upload file with automatic splitting into fragments if it exceeds fragmentSize
+     * @param file File to upload
+     * @param fragmentSize Maximum size of each fragment
+     * @param opts Upload options
+     * @param retryOpts Retry options
+     * @returns Promise resolving to arrays of transaction hashes and root hashes
+     */
+    splitableUpload(file: AbstractFile, opts?: UploadOption, retryOpts?: RetryOpts): Promise<[{
+        txHashes: string[];
+        rootHashes: string[];
+    }, Error | null]>;
     private submitTransaction;
     private findExistingFileInfo;
     processLogs(receipt: ethers.TransactionReceipt): Promise<number[]>;
@@ -24,7 +36,7 @@ export declare class Uploader {
     waitForLogEntry(txSeq: number, finalityRequired: boolean): Promise<FileInfo | null>;
     processTasksInParallel(file: AbstractFile, tree: MerkleTree, tasks: UploadTask[], retryOpts?: RetryOpts): Promise<(number | Error)[]>;
     nextSgmentIndex(config: ShardConfig, startIndex: number): number;
-    splitTasks(info: FileInfo, tree: MerkleTree, opts: UploadOption): Promise<UploadTask[] | null>;
+    splitTasks(info: FileInfo, tree: MerkleTree, opts?: UploadOption): Promise<UploadTask[] | null>;
     getSegment(file: AbstractFile, tree: MerkleTree, segIndex: number): Promise<[boolean, SegmentWithProof | null, Error | null]>;
     uploadTask(file: AbstractFile, tree: MerkleTree, uploadTask: UploadTask, retryOpts?: RetryOpts): Promise<number | Error>;
     private isAlreadyUploadedError;

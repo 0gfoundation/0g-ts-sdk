@@ -3,9 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Uploader = void 0;
 const constant_js_1 = require("../constant.js");
 const utils_js_1 = require("../utils.js");
+const index_js_1 = require("../file/index.js");
 const ethers_1 = require("ethers");
 const utils_js_2 = require("./utils.js");
-const index_js_1 = require("../common/index.js");
+const types_js_1 = require("./types.js");
+const index_js_2 = require("../common/index.js");
 class Uploader {
     nodes;
     provider;
@@ -24,11 +26,11 @@ class Uploader {
         if (err != null || tree == null || tree.rootHash() == null) {
             return [
                 { txHash: '', rootHash: '' },
-                new Error('Failed to create Merkle tree'),
+                new Error('Failed to create Merkle tree, ' + err),
             ];
         }
         const rootHash = tree.rootHash();
-        console.log('Data prepared to upload', 'root=' + rootHash, 'size=' + file.size(), 'numSegments=' + file.numSegments(), 'numChunks=' + file.numChunks());
+        console.log('Data prepared to upload', 'root=' + rootHash, 'size=' + file.size(), 'numSegments=' + file.numSegmentsPadded(), 'numChunks=' + file.numChunks());
         let txSeq = null;
         let receipt = null;
         let info = await this.findExistingFileInfo(rootHash);
@@ -83,20 +85,68 @@ class Uploader {
         await this.waitForLogEntry(info.tx.seq, true);
         return [{ txHash, rootHash }, null];
     }
-    async submitTransaction(submission, opts, retryOpts) {
+    /**
+     * Upload file with automatic splitting into fragments if it exceeds fragmentSize
+     * @param file File to upload
+     * @param fragmentSize Maximum size of each fragment
+     * @param opts Upload options
+     * @param retryOpts Retry options
+     * @returns Promise resolving to arrays of transaction hashes and root hashes
+     */
+    async splitableUpload(file, opts = {}, retryOpts) {
+        const mergedOpts = (0, types_js_1.mergeUploadOptions)(opts);
+        // Check fragment size
+        if (mergedOpts.fragmentSize < constant_js_1.DEFAULT_CHUNK_SIZE) {
+            mergedOpts.fragmentSize = constant_js_1.DEFAULT_CHUNK_SIZE;
+        }
+        // Align size of fragment to 2 power
+        mergedOpts.fragmentSize = (0, index_js_1.nextPow2)(mergedOpts.fragmentSize);
+        const txHashes = [];
+        const rootHashes = [];
+        if (file.size() <= mergedOpts.fragmentSize) {
+            // Single file upload
+            const [result, err] = await this.uploadFile(file, mergedOpts, retryOpts);
+            if (err != null) {
+                return [{ txHashes, rootHashes }, err];
+            }
+            txHashes.push(result.txHash);
+            rootHashes.push(result.rootHash);
+        }
+        else {
+            // Split and batch upload
+            const fragments = file.split(mergedOpts.fragmentSize);
+            console.log(`Splitted origin file into ${fragments.length} fragments, ${mergedOpts.fragmentSize} bytes each.`);
+            for (let l = 0; l < fragments.length; l += constant_js_1.DEFAULT_BATCH_SIZE) {
+                const r = Math.min(l + constant_js_1.DEFAULT_BATCH_SIZE, fragments.length);
+                console.log(`Batch uploading fragments ${l} to ${r}...`);
+                // Process fragments sequentially to maintain order
+                for (let i = l; i < r; i++) {
+                    const [result, err] = await this.uploadFile(fragments[i], mergedOpts, retryOpts);
+                    if (err != null) {
+                        return [{ txHashes, rootHashes }, err];
+                    }
+                    txHashes.push(result.txHash);
+                    rootHashes.push(result.rootHash);
+                }
+            }
+        }
+        return [{ txHashes, rootHashes }, null];
+    }
+    async submitTransaction(submission, opts = {}, retryOpts) {
+        const mergedOpts = (0, types_js_1.mergeUploadOptions)(opts);
         let marketAddr = await this.flow.market();
         let marketContract = (0, utils_js_1.getMarketContract)(marketAddr, this.provider);
         let pricePerSector = await marketContract.pricePerSector();
         let fee = BigInt('0');
-        if (opts.fee > 0) {
-            fee = opts.fee;
+        if (mergedOpts.fee > 0) {
+            fee = mergedOpts.fee;
         }
         else {
             fee = (0, utils_js_2.calculatePrice)(submission, pricePerSector);
         }
         var txOpts = {
             value: fee,
-            nonce: opts.nonce,
+            nonce: mergedOpts.nonce,
         };
         if (this.gasPrice > 0) {
             txOpts.gasPrice = this.gasPrice;
@@ -232,13 +282,14 @@ class Uploader {
             config.numShard +
             config.shardId);
     }
-    async splitTasks(info, tree, opts) {
+    async splitTasks(info, tree, opts = {}) {
+        const mergedOpts = (0, types_js_1.mergeUploadOptions)(opts);
         const shardConfigs = await (0, utils_js_2.getShardConfigs)(this.nodes);
         if (shardConfigs === null) {
             console.log('Failed to get shard configs');
             return null;
         }
-        if (!(0, index_js_1.checkReplica)(shardConfigs, opts.expectedReplica)) {
+        if (!(0, index_js_2.checkReplica)(shardConfigs, mergedOpts.expectedReplica)) {
             console.log('Not enough replicas');
             return null;
         }
@@ -249,7 +300,6 @@ class Uploader {
             const shardConfig = shardConfigs[clientIndex];
             let cInfo = await this.nodes[clientIndex].getFileInfo(tree.rootHash(), true);
             if (cInfo !== null && cInfo.finalized) {
-                console.log('File already exists on node', this.nodes[clientIndex].url, cInfo);
                 continue;
             }
             var tasks = [];
@@ -257,12 +307,12 @@ class Uploader {
             while (segIndex <= endSegmentIndex) {
                 tasks.push({
                     clientIndex,
-                    taskSize: opts.taskSize,
+                    taskSize: mergedOpts.taskSize,
                     segIndex: segIndex - startSegmentIndex,
                     numShard: shardConfig.numShard,
                     txSeq,
                 });
-                segIndex += shardConfig.numShard * opts.taskSize;
+                segIndex += shardConfig.numShard * mergedOpts.taskSize;
             }
             if (tasks.length > 0) {
                 uploadTasks.push(tasks);
@@ -330,14 +380,12 @@ class Uploader {
         }
         // Retry logic for "too many data writing" errors
         const maxRetries = retryOpts?.TooManyDataRetries ?? 3; // Default to 3 retries
+        const waitTime = (retryOpts?.Interval ?? 1) * 1000; // Default to 1 second
         let attempt = 0;
         let lastError = null;
         while (attempt < maxRetries) {
             try {
                 let res = await this.nodes[uploadTask.clientIndex].uploadSegmentsByTxSeq(segments, uploadTask.txSeq);
-                if (res === null) {
-                    throw new Error(`Node ${this.nodes[uploadTask.clientIndex].url} returned null for upload segments`);
-                }
                 return res;
             }
             catch (error) {
@@ -351,7 +399,6 @@ class Uploader {
                 // Handle retryable errors
                 if (this.isRetryableError(error)) {
                     if (attempt < maxRetries - 1) {
-                        const waitTime = (retryOpts?.Interval ?? 3) * 1000 * (attempt + 1);
                         const errorType = this.getErrorType(error);
                         console.log(`${errorType} on attempt ${attempt + 1}/${maxRetries}. Retrying in ${waitTime / 1000}s...`);
                         await new Promise((resolve) => setTimeout(resolve, waitTime));
