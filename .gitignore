@@ -3,3 +3,9 @@ coverage
 tmp
 
 .DS_Store
+
+# compiled output
+dist
+lib.commonjs
+lib.esm
+types

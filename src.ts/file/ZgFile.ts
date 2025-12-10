@@ -46,7 +46,7 @@ export class ZgFile extends AbstractFile {
         start: number,
         end: number
     ): Promise<{ bytesRead: number; buffer: Uint8Array }> {
-        if (start < 0 || start >= this.size()) {
+        if (start < 0 || start >= this.size() || start >= end) {
             throw new Error('invalid start offset')
         }
         if (end > this.size()) {
