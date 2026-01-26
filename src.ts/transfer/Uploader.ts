@@ -53,6 +53,7 @@ export class Uploader {
         opts: UploadOption,
         retryOpts?: RetryOpts
     ): Promise<[{ txHash: string; rootHash: string }, Error | null]> {
+        const mergedOpts = mergeUploadOptions(opts)
         var [tree, err] = await file.merkleTree()
         if (err != null || tree == null || tree.rootHash() == null) {
             return [
@@ -75,8 +76,15 @@ export class Uploader {
         let receipt: any = null
         let info = await this.findExistingFileInfo(rootHash)
 
-        if (!opts.skipTx || info === null) {
-            var [submission, err] = await file.createSubmission(opts.tags!)
+        if (!mergedOpts.skipTx || info === null) {
+            const submitter =
+                mergedOpts.submitter && mergedOpts.submitter.length > 0
+                    ? mergedOpts.submitter
+                    : await this.resolveSubmitter()
+            var [submission, err] = await file.createSubmission(
+                mergedOpts.tags!,
+                submitter
+            )
             if (err !== null || submission === null) {
                 return [
                     { txHash: '', rootHash },
@@ -285,6 +293,16 @@ export class Uploader {
         }
 
         return [txReceipt, null]
+    }
+
+    private async resolveSubmitter(): Promise<string> {
+        const runner = this.flow.runner as {
+            getAddress?: () => Promise<string>
+        } | null
+        if (runner?.getAddress) {
+            return await runner.getAddress()
+        }
+        return ethers.ZeroAddress
     }
 
     private async findExistingFileInfo(

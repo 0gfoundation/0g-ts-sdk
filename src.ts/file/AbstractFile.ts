@@ -1,6 +1,7 @@
-import { BytesLike } from 'ethers'
+import { BytesLike, ZeroAddress } from 'ethers'
 import { MerkleTree } from './MerkleTree.js'
 import {
+    SubmissionDataStruct,
     SubmissionNodeStruct,
     SubmissionStruct,
 } from '../contracts/flow/FixedPriceFlow.js'
@@ -158,9 +159,10 @@ export abstract class AbstractFile {
     ): AbstractFile
 
     async createSubmission(
-        tags: BytesLike
+        tags: BytesLike,
+        submitter: string = ZeroAddress
     ): Promise<[SubmissionStruct | null, Error | null]> {
-        const submission: SubmissionStruct = {
+        const data: SubmissionDataStruct = {
             length: this.size(),
             tags: tags,
             nodes: [],
@@ -173,8 +175,13 @@ export abstract class AbstractFile {
             if (err != null) {
                 return [null, err]
             }
-            submission.nodes.push(node as SubmissionNodeStruct)
+            data.nodes.push(node as SubmissionNodeStruct)
             offset += chunks * DEFAULT_CHUNK_SIZE
+        }
+
+        const submission: SubmissionStruct = {
+            data,
+            submitter,
         }
 
         return [submission, null]

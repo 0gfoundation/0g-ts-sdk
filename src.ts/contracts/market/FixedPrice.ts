@@ -36,7 +36,6 @@ export interface FixedPriceInterface extends Interface {
       | "grantRole"
       | "hasRole"
       | "initialize"
-      | "initialized"
       | "pricePerSector"
       | "renounceRole"
       | "revokeRole"
@@ -46,7 +45,11 @@ export interface FixedPriceInterface extends Interface {
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "RoleAdminChanged" | "RoleGranted" | "RoleRevoked"
+    nameOrSignatureOrTopic:
+      | "Initialized"
+      | "RoleAdminChanged"
+      | "RoleGranted"
+      | "RoleRevoked"
   ): EventFragment;
 
   encodeFunctionData(
@@ -85,10 +88,6 @@ export interface FixedPriceInterface extends Interface {
   encodeFunctionData(
     functionFragment: "initialize",
     values: [BigNumberish, AddressLike, AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "initialized",
-    values?: undefined
   ): string;
   encodeFunctionData(
     functionFragment: "pricePerSector",
@@ -138,10 +137,6 @@ export interface FixedPriceInterface extends Interface {
   decodeFunctionResult(functionFragment: "hasRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "initialize", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "initialized",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "pricePerSector",
     data: BytesLike
   ): Result;
@@ -159,6 +154,18 @@ export interface FixedPriceInterface extends Interface {
     functionFragment: "supportsInterface",
     data: BytesLike
   ): Result;
+}
+
+export namespace InitializedEvent {
+  export type InputTuple = [version: BigNumberish];
+  export type OutputTuple = [version: bigint];
+  export interface OutputObject {
+    version: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace RoleAdminChangedEvent {
@@ -306,12 +313,10 @@ export interface FixedPrice extends BaseContract {
     "nonpayable"
   >;
 
-  initialized: TypedContractMethod<[], [boolean], "view">;
-
   pricePerSector: TypedContractMethod<[], [bigint], "view">;
 
   renounceRole: TypedContractMethod<
-    [role: BytesLike, account: AddressLike],
+    [role: BytesLike, callerConfirmation: AddressLike],
     [void],
     "nonpayable"
   >;
@@ -395,15 +400,12 @@ export interface FixedPrice extends BaseContract {
     "nonpayable"
   >;
   getFunction(
-    nameOrSignature: "initialized"
-  ): TypedContractMethod<[], [boolean], "view">;
-  getFunction(
     nameOrSignature: "pricePerSector"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
     nameOrSignature: "renounceRole"
   ): TypedContractMethod<
-    [role: BytesLike, account: AddressLike],
+    [role: BytesLike, callerConfirmation: AddressLike],
     [void],
     "nonpayable"
   >;
@@ -424,6 +426,13 @@ export interface FixedPrice extends BaseContract {
     nameOrSignature: "supportsInterface"
   ): TypedContractMethod<[interfaceId: BytesLike], [boolean], "view">;
 
+  getEvent(
+    key: "Initialized"
+  ): TypedContractEvent<
+    InitializedEvent.InputTuple,
+    InitializedEvent.OutputTuple,
+    InitializedEvent.OutputObject
+  >;
   getEvent(
     key: "RoleAdminChanged"
   ): TypedContractEvent<
@@ -447,6 +456,17 @@ export interface FixedPrice extends BaseContract {
   >;
 
   filters: {
+    "Initialized(uint64)": TypedContractEvent<
+      InitializedEvent.InputTuple,
+      InitializedEvent.OutputTuple,
+      InitializedEvent.OutputObject
+    >;
+    Initialized: TypedContractEvent<
+      InitializedEvent.InputTuple,
+      InitializedEvent.OutputTuple,
+      InitializedEvent.OutputObject
+    >;
+
     "RoleAdminChanged(bytes32,bytes32,bytes32)": TypedContractEvent<
       RoleAdminChangedEvent.InputTuple,
       RoleAdminChangedEvent.OutputTuple,

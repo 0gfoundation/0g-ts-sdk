@@ -22,7 +22,7 @@ export function calculatePrice(
     pricePerSector: bigint
 ): bigint {
     let sectors: number = 0
-    for (const node of submission.nodes) {
+    for (const node of submission.data.nodes) {
         sectors += 1 << Number(node.height.toString())
     }
 
