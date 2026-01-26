@@ -20,11 +20,11 @@ test("createSubmission", async () => {
     const file = await ZgFile.fromFilePath(join(__dirname, "./example.md"));
     const [submission, err] = await file.createSubmission("test");
     expect(err).toBe(null);
-    expect(submission.length).toBe(20182);
-    expect(submission.nodes.length).toBe(2);
-    expect(submission.nodes[0].height).toBe(6);
-    expect(submission.nodes[1].height).toBe(4);
-    expect(submission.nodes[0].root).toBe('0x67ffe8254bf275aebaaa4aea83e2304b75f0021cecdfeb5555b9af0d6d4db132');
-    expect(submission.nodes[1].root).toBe('0x573f918e76aa3b778c0774b870c8ba3a7d16ba2900c904af68fb9af224d4511f');
+    expect(submission.data.length).toBe(20182);
+    expect(submission.data.nodes.length).toBe(2);
+    expect(submission.data.nodes[0].height).toBe(6);
+    expect(submission.data.nodes[1].height).toBe(4);
+    expect(submission.data.nodes[0].root).toBe('0x67ffe8254bf275aebaaa4aea83e2304b75f0021cecdfeb5555b9af0d6d4db132');
+    expect(submission.data.nodes[1].root).toBe('0x573f918e76aa3b778c0774b870c8ba3a7d16ba2900c904af68fb9af224d4511f');
     await file.close();
 });

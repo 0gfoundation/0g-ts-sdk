@@ -30,17 +30,27 @@ export type SubmissionNodeStructOutput = [root: string, height: bigint] & {
   height: bigint;
 };
 
-export type SubmissionStruct = {
+export type SubmissionDataStruct = {
   length: BigNumberish;
   tags: BytesLike;
   nodes: SubmissionNodeStruct[];
 };
 
-export type SubmissionStructOutput = [
+export type SubmissionDataStructOutput = [
   length: bigint,
   tags: string,
   nodes: SubmissionNodeStructOutput[]
 ] & { length: bigint; tags: string; nodes: SubmissionNodeStructOutput[] };
+
+export type SubmissionStruct = {
+  data: SubmissionDataStruct;
+  submitter: AddressLike;
+};
+
+export type SubmissionStructOutput = [
+  data: SubmissionDataStructOutput,
+  submitter: string
+] & { data: SubmissionDataStructOutput; submitter: string };
 
 export type MineContextStruct = {
   epoch: BigNumberish;
@@ -93,18 +103,21 @@ export interface FixedPriceFlowInterface extends Interface {
       | "PAUSER_ROLE"
       | "batchSubmit"
       | "blocksPerEpoch"
+      | "computeFlowRoot"
+      | "deployDelay"
       | "epoch"
       | "epochStartPosition"
       | "firstBlock"
       | "getContext"
       | "getEpochRange"
+      | "getEpochRangeHistory"
+      | "getFlowRootByTxSeq"
       | "getRoleAdmin"
       | "getRoleMember"
       | "getRoleMemberCount"
       | "grantRole"
       | "hasRole"
       | "initialize"
-      | "initialized"
       | "makeContext"
       | "makeContextFixedTimes"
       | "makeContextWithResult"
@@ -116,6 +129,7 @@ export interface FixedPriceFlowInterface extends Interface {
       | "renounceRole"
       | "revokeRole"
       | "rootHistory"
+      | "setParams"
       | "submissionIndex"
       | "submit"
       | "supportsInterface"
@@ -125,6 +139,7 @@ export interface FixedPriceFlowInterface extends Interface {
 
   getEvent(
     nameOrSignatureOrTopic:
+      | "Initialized"
       | "NewEpoch"
       | "Paused"
       | "RoleAdminChanged"
@@ -150,6 +165,14 @@ export interface FixedPriceFlowInterface extends Interface {
     functionFragment: "blocksPerEpoch",
     values?: undefined
   ): string;
+  encodeFunctionData(
+    functionFragment: "computeFlowRoot",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "deployDelay",
+    values?: undefined
+  ): string;
   encodeFunctionData(functionFragment: "epoch", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "epochStartPosition",
@@ -166,6 +189,14 @@ export interface FixedPriceFlowInterface extends Interface {
   encodeFunctionData(
     functionFragment: "getEpochRange",
     values: [BytesLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getEpochRangeHistory",
+    values: [BigNumberish]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getFlowRootByTxSeq",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getRoleAdmin",
@@ -189,11 +220,7 @@ export interface FixedPriceFlowInterface extends Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "initialize",
-    values: [AddressLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "initialized",
-    values?: undefined
+    values: [AddressLike, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "makeContext",
@@ -231,6 +258,10 @@ export interface FixedPriceFlowInterface extends Interface {
     values?: undefined
   ): string;
   encodeFunctionData(
+    functionFragment: "setParams",
+    values: [BigNumberish, BigNumberish, AddressLike]
+  ): string;
+  encodeFunctionData(
     functionFragment: "submissionIndex",
     values?: undefined
   ): string;
@@ -261,6 +292,14 @@ export interface FixedPriceFlowInterface extends Interface {
     functionFragment: "blocksPerEpoch",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(
+    functionFragment: "computeFlowRoot",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "deployDelay",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "epoch", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "epochStartPosition",
@@ -270,6 +309,14 @@ export interface FixedPriceFlowInterface extends Interface {
   decodeFunctionResult(functionFragment: "getContext", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "getEpochRange",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getEpochRangeHistory",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "getFlowRootByTxSeq",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -287,10 +334,6 @@ export interface FixedPriceFlowInterface extends Interface {
   decodeFunctionResult(functionFragment: "grantRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "hasRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "initialize", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "initialized",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(
     functionFragment: "makeContext",
     data: BytesLike
@@ -323,6 +366,7 @@ export interface FixedPriceFlowInterface extends Interface {
     functionFragment: "rootHistory",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "setParams", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "submissionIndex",
     data: BytesLike
@@ -334,6 +378,18 @@ export interface FixedPriceFlowInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "tree", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
+}
+
+export namespace InitializedEvent {
+  export type InputTuple = [version: BigNumberish];
+  export type OutputTuple = [version: bigint];
+  export interface OutputObject {
+    version: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
 }
 
 export namespace NewEpochEvent {
@@ -444,7 +500,7 @@ export namespace SubmitEvent {
     submissionIndex: BigNumberish,
     startPos: BigNumberish,
     length: BigNumberish,
-    submission: SubmissionStruct
+    submission: SubmissionDataStruct
   ];
   export type OutputTuple = [
     sender: string,
@@ -452,7 +508,7 @@ export namespace SubmitEvent {
     submissionIndex: bigint,
     startPos: bigint,
     length: bigint,
-    submission: SubmissionStructOutput
+    submission: SubmissionDataStructOutput
   ];
   export interface OutputObject {
     sender: string;
@@ -460,7 +516,7 @@ export namespace SubmitEvent {
     submissionIndex: bigint;
     startPos: bigint;
     length: bigint;
-    submission: SubmissionStructOutput;
+    submission: SubmissionDataStructOutput;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -542,6 +598,10 @@ export interface FixedPriceFlow extends BaseContract {
 
   blocksPerEpoch: TypedContractMethod<[], [bigint], "view">;
 
+  computeFlowRoot: TypedContractMethod<[], [string], "nonpayable">;
+
+  deployDelay: TypedContractMethod<[], [bigint], "view">;
+
   epoch: TypedContractMethod<[], [bigint], "view">;
 
   epochStartPosition: TypedContractMethod<[], [bigint], "view">;
@@ -553,6 +613,18 @@ export interface FixedPriceFlow extends BaseContract {
   getEpochRange: TypedContractMethod<
     [digest: BytesLike],
     [EpochRangeStructOutput],
+    "view"
+  >;
+
+  getEpochRangeHistory: TypedContractMethod<
+    [index: BigNumberish],
+    [EpochRangeWithContextDigestStructOutput],
+    "view"
+  >;
+
+  getFlowRootByTxSeq: TypedContractMethod<
+    [txSeq: BigNumberish],
+    [string],
     "view"
   >;
 
@@ -578,9 +650,11 @@ export interface FixedPriceFlow extends BaseContract {
     "view"
   >;
 
-  initialize: TypedContractMethod<[market_: AddressLike], [void], "nonpayable">;
-
-  initialized: TypedContractMethod<[], [boolean], "view">;
+  initialize: TypedContractMethod<
+    [market_: AddressLike, blocksPerEpoch_: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
 
   makeContext: TypedContractMethod<[], [void], "nonpayable">;
 
@@ -611,7 +685,7 @@ export interface FixedPriceFlow extends BaseContract {
   >;
 
   renounceRole: TypedContractMethod<
-    [role: BytesLike, account: AddressLike],
+    [role: BytesLike, callerConfirmation: AddressLike],
     [void],
     "nonpayable"
   >;
@@ -624,11 +698,28 @@ export interface FixedPriceFlow extends BaseContract {
 
   rootHistory: TypedContractMethod<[], [string], "view">;
 
+  setParams: TypedContractMethod<
+    [
+      blocksPerEpoch_: BigNumberish,
+      firstBlock_: BigNumberish,
+      rootHistory_: AddressLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+
   submissionIndex: TypedContractMethod<[], [bigint], "view">;
 
   submit: TypedContractMethod<
     [submission: SubmissionStruct],
-    [[bigint, string, bigint, bigint]],
+    [
+      [bigint, string, bigint, bigint] & {
+        index: bigint;
+        digest: string;
+        startIndex: bigint;
+        length: bigint;
+      }
+    ],
     "payable"
   >;
 
@@ -674,6 +765,12 @@ export interface FixedPriceFlow extends BaseContract {
     nameOrSignature: "blocksPerEpoch"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
+    nameOrSignature: "computeFlowRoot"
+  ): TypedContractMethod<[], [string], "nonpayable">;
+  getFunction(
+    nameOrSignature: "deployDelay"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
     nameOrSignature: "epoch"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
@@ -688,6 +785,16 @@ export interface FixedPriceFlow extends BaseContract {
   getFunction(
     nameOrSignature: "getEpochRange"
   ): TypedContractMethod<[digest: BytesLike], [EpochRangeStructOutput], "view">;
+  getFunction(
+    nameOrSignature: "getEpochRangeHistory"
+  ): TypedContractMethod<
+    [index: BigNumberish],
+    [EpochRangeWithContextDigestStructOutput],
+    "view"
+  >;
+  getFunction(
+    nameOrSignature: "getFlowRootByTxSeq"
+  ): TypedContractMethod<[txSeq: BigNumberish], [string], "view">;
   getFunction(
     nameOrSignature: "getRoleAdmin"
   ): TypedContractMethod<[role: BytesLike], [string], "view">;
@@ -717,10 +824,11 @@ export interface FixedPriceFlow extends BaseContract {
   >;
   getFunction(
     nameOrSignature: "initialize"
-  ): TypedContractMethod<[market_: AddressLike], [void], "nonpayable">;
-  getFunction(
-    nameOrSignature: "initialized"
-  ): TypedContractMethod<[], [boolean], "view">;
+  ): TypedContractMethod<
+    [market_: AddressLike, blocksPerEpoch_: BigNumberish],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "makeContext"
   ): TypedContractMethod<[], [void], "nonpayable">;
@@ -752,7 +860,7 @@ export interface FixedPriceFlow extends BaseContract {
   getFunction(
     nameOrSignature: "renounceRole"
   ): TypedContractMethod<
-    [role: BytesLike, account: AddressLike],
+    [role: BytesLike, callerConfirmation: AddressLike],
     [void],
     "nonpayable"
   >;
@@ -767,13 +875,31 @@ export interface FixedPriceFlow extends BaseContract {
     nameOrSignature: "rootHistory"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "setParams"
+  ): TypedContractMethod<
+    [
+      blocksPerEpoch_: BigNumberish,
+      firstBlock_: BigNumberish,
+      rootHistory_: AddressLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "submissionIndex"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
     nameOrSignature: "submit"
   ): TypedContractMethod<
     [submission: SubmissionStruct],
-    [[bigint, string, bigint, bigint]],
+    [
+      [bigint, string, bigint, bigint] & {
+        index: bigint;
+        digest: string;
+        startIndex: bigint;
+        length: bigint;
+      }
+    ],
     "payable"
   >;
   getFunction(
@@ -790,6 +916,13 @@ export interface FixedPriceFlow extends BaseContract {
     nameOrSignature: "unpause"
   ): TypedContractMethod<[], [void], "nonpayable">;
 
+  getEvent(
+    key: "Initialized"
+  ): TypedContractEvent<
+    InitializedEvent.InputTuple,
+    InitializedEvent.OutputTuple,
+    InitializedEvent.OutputObject
+  >;
   getEvent(
     key: "NewEpoch"
   ): TypedContractEvent<
@@ -841,6 +974,17 @@ export interface FixedPriceFlow extends BaseContract {
   >;
 
   filters: {
+    "Initialized(uint64)": TypedContractEvent<
+      InitializedEvent.InputTuple,
+      InitializedEvent.OutputTuple,
+      InitializedEvent.OutputObject
+    >;
+    Initialized: TypedContractEvent<
+      InitializedEvent.InputTuple,
+      InitializedEvent.OutputTuple,
+      InitializedEvent.OutputObject
+    >;
+
     "NewEpoch(address,uint256,bytes32,uint256,uint256,bytes32)": TypedContractEvent<
       NewEpochEvent.InputTuple,
       NewEpochEvent.OutputTuple,

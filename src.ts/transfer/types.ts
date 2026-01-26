@@ -10,6 +10,7 @@ export interface UploadTask {
 
 export interface UploadOption {
     tags?: ethers.BytesLike // transaction tags
+    submitter?: string // submission submitter address, defaults to runner address
     finalityRequired?: boolean // wait for file finalized on uploaded nodes or not
     taskSize?: number // number of segment to upload in single rpc request
     expectedReplica?: number // expected number of replications
@@ -23,6 +24,7 @@ export const defaultUploadOption: Omit<Required<UploadOption>, 'nonce'> & {
     nonce?: bigint
 } = {
     tags: '0x',
+    submitter: '',
     finalityRequired: true,
     taskSize: 1,
     expectedReplica: 1,
@@ -39,6 +41,7 @@ export function mergeUploadOptions(
 ): Required<Omit<UploadOption, 'nonce'>> & { nonce?: bigint } {
     return {
         tags: userOptions.tags ?? defaultUploadOption.tags,
+        submitter: userOptions.submitter ?? defaultUploadOption.submitter,
         finalityRequired:
             userOptions.finalityRequired ??
             defaultUploadOption.finalityRequired,
