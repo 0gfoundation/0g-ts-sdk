@@ -93,12 +93,6 @@ export abstract class AbstractFile {
             }
             const current = iter.current()
             const segRoot = AbstractFile.segmentRoot(current)
-            console.log(
-                'Segment root at file offset',
-                this.offset,
-                ':',
-                segRoot
-            )
 
             tree.addLeafByHash(segRoot)
         }
