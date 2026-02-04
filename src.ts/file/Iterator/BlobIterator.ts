@@ -64,25 +64,21 @@ export class BlobIterator implements Iterator {
             return [true, null];
         }
 
-        const {bytesRead: n, buffer} = await this.readFromFile(this.offset, this.offset + this.batchSize);
-        this.buf = buffer;
-
-        this.bufSize = n;
-        this.offset += n;
-
-        // not reach EOF
-        if (n === expectedBufSize) {
-            return [true, null];
-        }
+        const {bytesRead: n, buffer} = await this.readFromFile(
+            this.offset,
+            this.offset + this.batchSize
+        );
 
         if (n > expectedBufSize) {
             // should never happen
             throw new Error("load more data from file than expected")
         }
 
-        if (expectedBufSize > n) {
-            this.paddingZeros(expectedBufSize - n);
-        }
+        // Keep a fixed-size buffer so padding zeros are preserved.
+        this.buf.fill(0);
+        this.buf.set(buffer.subarray(0, n), 0);
+        this.bufSize = expectedBufSize;
+        this.offset += expectedBufSize;
 
         return [true, null];
     }
