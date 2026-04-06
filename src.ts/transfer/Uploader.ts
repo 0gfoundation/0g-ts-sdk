@@ -76,6 +76,11 @@ export class Uploader {
         let receipt: any = null
         let info = await this.findExistingFileInfo(rootHash)
 
+        if (info !== null && info.finalized) {
+            console.log('File already finalized on-chain, skipping upload')
+            return [{ txHash: '', rootHash }, null]
+        }
+
         if (!mergedOpts.skipTx || info === null) {
             const submitter =
                 mergedOpts.submitter && mergedOpts.submitter.length > 0

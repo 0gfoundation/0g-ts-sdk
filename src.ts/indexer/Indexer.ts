@@ -338,18 +338,19 @@ export class Indexer extends HttpProvider {
     ): Promise<[Downloader | null, Error | null]> {
         console.log(`Getting file locations for root hash: ${rootHash}`)
         const locations = await this.getFileLocations(rootHash)
-        console.log(
-            `Found ${locations.length} locations for ${rootHash}:`,
-            locations.map((l) => l.url)
-        )
 
-        if (locations.length === 0) {
+        if (!locations || locations.length === 0) {
             console.error(`No locations found for root hash: ${rootHash}`)
             return [
                 null,
                 new Error(`Failed to get file locations for ${rootHash}`),
             ]
         }
+
+        console.log(
+            `Found ${locations.length} locations for ${rootHash}:`,
+            locations.map((l) => l.url)
+        )
 
         const clients: StorageNode[] = []
         locations.forEach((node) => {
