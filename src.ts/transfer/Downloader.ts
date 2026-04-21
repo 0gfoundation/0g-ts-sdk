@@ -58,7 +58,7 @@ export class Downloader {
         if (!info.finalized) {
             return new Error('File not finalized')
         }
-        if (checkExist(filePath)) {
+        if (await checkExist(filePath)) {
             return new Error('Wrong path, provide a file path which does not exist.')
         }
 
@@ -78,9 +78,9 @@ export class Downloader {
     ): Promise<Error | null> {
         // Dynamic import keeps `fs` out of browser bundles
         const fs = await import(/* webpackIgnore: true */ 'fs')
-        const path = await import('path')
+        const path = await import(/* webpackIgnore: true */ 'path')
 
-        if (checkExist(filename)) {
+        if (await checkExist(filename)) {
             return new Error('Output file already exists. Provide a file path which does not exist.')
         }
 

@@ -17,30 +17,23 @@ export function getMarketContract(address: string, runner: ContractRunner) {
 
 export const delay = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
-// Node.js only — returns false (path is clear) in browser and Node.js ESM contexts
-// where require is unavailable.  Callers treat true as "abort with error".
-export function checkExist(inputPath: string): boolean {
+// Node.js only — returns false (path is clear) in browser contexts.
+// Uses dynamic import so it works in both CJS and ESM Node.js.
+export async function checkExist(inputPath: string): Promise<boolean> {
     if (typeof window !== 'undefined') return false // browser
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const fs = require('fs') as typeof import('fs')
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const path = require('path') as typeof import('path')
-        const dirName = path.dirname(inputPath)
-        if (!fs.existsSync(dirName)) {
-            return true
-        }
-        if (fs.existsSync(inputPath) && fs.lstatSync(inputPath).isDirectory()) {
-            return true
-        }
-        if (!fs.existsSync(inputPath)) {
-            return false
-        }
+    const fs = await import(/* webpackIgnore: true */ 'fs')
+    const path = await import(/* webpackIgnore: true */ 'path')
+    const dirName = path.dirname(inputPath)
+    if (!fs.existsSync(dirName)) {
         return true
-    } catch {
-        // Node.js ESM: require is not defined — skip the check and proceed
+    }
+    if (fs.existsSync(inputPath) && fs.lstatSync(inputPath).isDirectory()) {
+        return true
+    }
+    if (!fs.existsSync(inputPath)) {
         return false
     }
+    return true
 }
 
 export function GetSplitNum(total: number, unit: number): number {
