@@ -25,14 +25,22 @@ export class Downloader {
      * Downloads a single file by root hash, writing to `filePath`.
      * Node.js only — uses the `fs` module.
      */
-    async download(root: Hash, filePath: string, proof?: boolean): Promise<Error | null>
+    async download(
+        root: Hash,
+        filePath: string,
+        proof?: boolean
+    ): Promise<Error | null>
 
     /**
      * Downloads multiple files by root hashes, concatenating them into
      * a single file at `filePath`.
      * Node.js only — uses the `fs` module.
      */
-    async download(roots: Hash[], filePath: string, proof?: boolean): Promise<Error | null>
+    async download(
+        roots: Hash[],
+        filePath: string,
+        proof?: boolean
+    ): Promise<Error | null>
 
     async download(
         rootOrRoots: Hash | Hash[],
@@ -59,7 +67,9 @@ export class Downloader {
             return new Error('File not finalized')
         }
         if (await checkExist(filePath)) {
-            return new Error('Wrong path, provide a file path which does not exist.')
+            return new Error(
+                'Wrong path, provide a file path which does not exist.'
+            )
         }
 
         const shardConfigs = await getShardConfigs(this.nodes)
@@ -81,7 +91,9 @@ export class Downloader {
         const path = await import(/* webpackIgnore: true */ 'path')
 
         if (await checkExist(filename)) {
-            return new Error('Output file already exists. Provide a file path which does not exist.')
+            return new Error(
+                'Output file already exists. Provide a file path which does not exist.'
+            )
         }
 
         const outputDir = path.dirname(filename)
@@ -106,27 +118,39 @@ export class Downloader {
                 const tempFile = path.join(outputDir, `${root}.temp`)
                 tempFiles.push(tempFile)
 
-                const downloadErr = await this.downloadFile(root, tempFile, withProof)
+                const downloadErr = await this.downloadFile(
+                    root,
+                    tempFile,
+                    withProof
+                )
                 if (downloadErr != null) {
-                    return new Error(`Failed to download file with root ${root}: ${downloadErr.message}`)
+                    return new Error(
+                        `Failed to download file with root ${root}: ${downloadErr.message}`
+                    )
                 }
 
                 try {
                     const data = fs.readFileSync(tempFile)
                     fs.writeSync(outFileHandle, new Uint8Array(data))
                 } catch (err) {
-                    return new Error(`Failed to copy content from temp file ${tempFile}: ${err}`)
+                    return new Error(
+                        `Failed to copy content from temp file ${tempFile}: ${err}`
+                    )
                 }
 
                 try {
                     fs.unlinkSync(tempFile)
                 } catch (err) {
-                    console.warn(`Warning: failed to delete temp file ${tempFile}: ${err}`)
+                    console.warn(
+                        `Warning: failed to delete temp file ${tempFile}: ${err}`
+                    )
                 }
             }
             return null
         } catch (err) {
-            return new Error(`Unexpected error during download fragments: ${err}`)
+            return new Error(
+                `Unexpected error during download fragments: ${err}`
+            )
         } finally {
             try {
                 fs.closeSync(outFileHandle!)
@@ -137,7 +161,9 @@ export class Downloader {
                 try {
                     if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile)
                 } catch (err) {
-                    console.warn(`Warning: failed to clean up temp file ${tempFile}: ${err}`)
+                    console.warn(
+                        `Warning: failed to clean up temp file ${tempFile}: ${err}`
+                    )
                 }
             }
         }
@@ -148,13 +174,19 @@ export class Downloader {
     /**
      * Downloads a single file into a Blob — browser and Node.js safe.
      */
-    async downloadToBlob(root: Hash, proof?: boolean): Promise<[Blob, Error | null]>
+    async downloadToBlob(
+        root: Hash,
+        proof?: boolean
+    ): Promise<[Blob, Error | null]>
 
     /**
      * Downloads multiple files and concatenates them into a single Blob —
      * browser and Node.js safe.
      */
-    async downloadToBlob(roots: Hash[], proof?: boolean): Promise<[Blob, Error | null]>
+    async downloadToBlob(
+        roots: Hash[],
+        proof?: boolean
+    ): Promise<[Blob, Error | null]>
 
     async downloadToBlob(
         rootOrRoots: Hash | Hash[],
@@ -173,7 +205,10 @@ export class Downloader {
     ): Promise<[Blob, Error | null]> {
         const [info, err] = await this.queryFile(root)
         if (err != null || info === null) {
-            return [new Blob(), new Error(err?.message ?? 'Failed to query file')]
+            return [
+                new Blob(),
+                new Error(err?.message ?? 'Failed to query file'),
+            ]
         }
         if (!info.finalized) {
             return [new Blob(), new Error('File not finalized')]
@@ -197,7 +232,9 @@ export class Downloader {
             info.tx.startEntryIndex / DEFAULT_SEGMENT_MAX_CHUNKS
         )
         this.endSegmentIndex = Math.floor(
-            (info.tx.startEntryIndex + GetSplitNum(info.tx.size, DEFAULT_CHUNK_SIZE) - 1) /
+            (info.tx.startEntryIndex +
+                GetSplitNum(info.tx.size, DEFAULT_CHUNK_SIZE) -
+                1) /
                 DEFAULT_SEGMENT_MAX_CHUNKS
         )
 
@@ -205,7 +242,13 @@ export class Downloader {
         const chunks: Uint8Array[] = []
 
         for (let taskInd = 0; taskInd < numTasks; taskInd++) {
-            const [segArray, err] = await this.downloadTask(info, 0, taskInd, numChunks, proof)
+            const [segArray, err] = await this.downloadTask(
+                info,
+                0,
+                taskInd,
+                numChunks,
+                proof
+            )
             if (err != null) {
                 return [new Blob(), err]
             }
@@ -284,7 +327,10 @@ export class Downloader {
 
             let segArray = decodeBase64(segment)
 
-            if (this.startSegmentIndex + segmentIndex === this.endSegmentIndex) {
+            if (
+                this.startSegmentIndex + segmentIndex ===
+                this.endSegmentIndex
+            ) {
                 const lastChunkSize = info.tx.size % DEFAULT_CHUNK_SIZE
                 if (lastChunkSize > 0) {
                     const paddings = DEFAULT_CHUNK_SIZE - lastChunkSize
@@ -296,7 +342,9 @@ export class Downloader {
 
         return [
             new Uint8Array(),
-            new Error('No storage node holds segment with index ' + segmentIndex),
+            new Error(
+                'No storage node holds segment with index ' + segmentIndex
+            ),
         ]
     }
 

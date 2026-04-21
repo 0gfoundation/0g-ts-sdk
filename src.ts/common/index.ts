@@ -76,7 +76,14 @@ export function selectNodes(
     const selectedNodes: ShardedNode[] = []
     for (let i = 0; i < sorted.length; i += 1) {
         const node = sorted[i]
-        if (insert(root, node.config.numShard, node.config.shardId, expectedReplica)) {
+        if (
+            insert(
+                root,
+                node.config.numShard,
+                node.config.shardId,
+                expectedReplica
+            )
+        ) {
             selectedNodes.push(node)
         }
         if (root.replica >= expectedReplica) {

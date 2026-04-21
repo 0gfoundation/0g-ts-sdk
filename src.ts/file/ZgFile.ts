@@ -26,7 +26,9 @@ export class ZgFile extends AbstractFile {
 
     // NOTE: need manually close fd after use. Node.js only.
     static async fromFilePath(path: string): Promise<ZgFile> {
-        const { open } = await import(/* webpackIgnore: true */ 'node:fs/promises')
+        const { open } = await import(
+            /* webpackIgnore: true */ 'node:fs/promises'
+        )
         const fd = await open(path, 'r') // if fail, throw error
         return await ZgFile.fromNodeFileHandle(fd)
     }
