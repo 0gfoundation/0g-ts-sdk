@@ -58,7 +58,11 @@ export class Indexer extends HttpProvider {
         method: SelectMethod = 'min'
     ): Promise<[StorageNode[], Error | null]> {
         const nodes: ShardedNodes = await this.getShardedNodes()
-        const [trusted, ok] = selectNodes(nodes.trusted, expectedReplica, method)
+        const [trusted, ok] = selectNodes(
+            nodes.trusted,
+            expectedReplica,
+            method
+        )
         if (!ok) {
             return [
                 [],
@@ -67,7 +71,9 @@ export class Indexer extends HttpProvider {
                 ),
             ]
         }
-        const clients: StorageNode[] = trusted.map((node) => new StorageNode(node.url))
+        const clients: StorageNode[] = trusted.map(
+            (node) => new StorageNode(node.url)
+        )
         return [clients, null]
     }
 
@@ -86,7 +92,10 @@ export class Indexer extends HttpProvider {
 
         const status = await clients[0].getStatus()
         if (status == null) {
-            return [null, new Error('failed to get status from the selected node')]
+            return [
+                null,
+                new Error('failed to get status from the selected node'),
+            ]
         }
 
         console.log('First selected node status :', status)
@@ -115,8 +124,8 @@ export class Indexer extends HttpProvider {
     ): Promise<
         [
             (
-                | { txHash: string; rootHash: string }
-                | { txHashes: string[]; rootHashes: string[] }
+                | { txHash: string; rootHash: string; txSeq: number }
+                | { txHashes: string[]; rootHashes: string[]; txSeqs: number[] }
             ),
             Error | null
         ]
@@ -134,26 +143,43 @@ export class Indexer extends HttpProvider {
         )
         if (err != null || uploader == null) {
             console.error(`Failed to create uploader: ${err?.message}`)
-            return [{ txHash: '', rootHash: '' }, err]
+            return [{ txHash: '', rootHash: '', txSeq: 0 }, err]
         }
 
-        console.log(`Using splitable upload (handles both single and fragment cases)`)
+        console.log(
+            `Using splitable upload (handles both single and fragment cases)`
+        )
         console.log(
             `File details - size: ${file.size()}, numSegments: ${file.numSegments()}, numChunks: ${file.numChunks()}`
         )
 
-        const [result, uploadErr] = await uploader.splitableUpload(file, mergedOpts, retryOpts)
+        const [result, uploadErr] = await uploader.splitableUpload(
+            file,
+            mergedOpts,
+            retryOpts
+        )
         if (uploadErr != null) {
             console.error(`Upload failed with error:`, uploadErr.message)
             console.error(`Error stack:`, uploadErr.stack)
-            return [{ txHash: '', rootHash: '' }, uploadErr]
+            return [{ txHash: '', rootHash: '', txSeq: 0 }, uploadErr]
         }
 
         if (result.txHashes.length === 1 && result.rootHashes.length === 1) {
-            console.log(`Single file upload completed - returning single result`)
-            return [{ txHash: result.txHashes[0], rootHash: result.rootHashes[0] }, null]
+            console.log(
+                `Single file upload completed - returning single result`
+            )
+            return [
+                {
+                    txHash: result.txHashes[0],
+                    rootHash: result.rootHashes[0],
+                    txSeq: result.txSeqs[0],
+                },
+                null,
+            ]
         } else {
-            console.log(`Fragment upload completed - returning ${result.txHashes.length} fragments`)
+            console.log(
+                `Fragment upload completed - returning ${result.txHashes.length} fragments`
+            )
             return [result, null]
         }
     }
@@ -164,13 +190,21 @@ export class Indexer extends HttpProvider {
      * Downloads a single file by root hash, writing to `filePath`.
      * Node.js only — uses the `fs` module.
      */
-    async download(rootHash: string, filePath: string, proof?: boolean): Promise<Error | null>
+    async download(
+        rootHash: string,
+        filePath: string,
+        proof?: boolean
+    ): Promise<Error | null>
 
     /**
      * Downloads multiple files by root hashes and concatenates them.
      * Node.js only — uses the `fs` module.
      */
-    async download(rootHashes: string[], filePath: string, proof?: boolean): Promise<Error | null>
+    async download(
+        rootHashes: string[],
+        filePath: string,
+        proof?: boolean
+    ): Promise<Error | null>
 
     async download(
         rootHashOrHashes: string | string[],
@@ -180,10 +214,19 @@ export class Indexer extends HttpProvider {
         console.log(`Starting download to: ${filePath}, proof: ${proof}`)
 
         if (Array.isArray(rootHashOrHashes)) {
-            console.log(`Downloading ${rootHashOrHashes.length} fragments:`, rootHashOrHashes)
-            return await this.downloadFragments(rootHashOrHashes, filePath, proof)
+            console.log(
+                `Downloading ${rootHashOrHashes.length} fragments:`,
+                rootHashOrHashes
+            )
+            return await this.downloadFragments(
+                rootHashOrHashes,
+                filePath,
+                proof
+            )
         } else {
-            console.log(`Downloading single file with root hash: ${rootHashOrHashes}`)
+            console.log(
+                `Downloading single file with root hash: ${rootHashOrHashes}`
+            )
             return await this.downloadSingle(rootHashOrHashes, filePath, proof)
         }
     }
@@ -201,7 +244,9 @@ export class Indexer extends HttpProvider {
             outFile = fs.createWriteStream(filePath)
         } catch (err) {
             return new Error(
-                `Failed to create output file: ${err instanceof Error ? err.message : String(err)}`
+                `Failed to create output file: ${
+                    err instanceof Error ? err.message : String(err)
+                }`
             )
         }
 
@@ -210,16 +255,25 @@ export class Indexer extends HttpProvider {
                 console.log(`Processing fragment: ${rootHash}`)
 
                 const tempFile = `${rootHash}.temp`
-                const [downloader, err] = await this.newDownloaderFromIndexerNodes(rootHash)
+                const [downloader, err] =
+                    await this.newDownloaderFromIndexerNodes(rootHash)
                 if (err !== null || downloader === null) {
                     outFile.destroy()
-                    return new Error(`Failed to create downloader for ${rootHash}: ${err?.message}`)
+                    return new Error(
+                        `Failed to create downloader for ${rootHash}: ${err?.message}`
+                    )
                 }
 
-                const downloadErr = await downloader.download(rootHash, tempFile, proof)
+                const downloadErr = await downloader.download(
+                    rootHash,
+                    tempFile,
+                    proof
+                )
                 if (downloadErr !== null) {
                     outFile.destroy()
-                    return new Error(`Failed to download fragment ${rootHash}: ${downloadErr.message}`)
+                    return new Error(
+                        `Failed to download fragment ${rootHash}: ${downloadErr.message}`
+                    )
                 }
 
                 try {
@@ -254,7 +308,9 @@ export class Indexer extends HttpProvider {
         } catch (err) {
             outFile.destroy()
             return new Error(
-                `Fragment download failed: ${err instanceof Error ? err.message : String(err)}`
+                `Fragment download failed: ${
+                    err instanceof Error ? err.message : String(err)
+                }`
             )
         }
     }
@@ -264,7 +320,9 @@ export class Indexer extends HttpProvider {
         filePath: string,
         proof: boolean
     ): Promise<Error | null> {
-        const [downloader, err] = await this.newDownloaderFromIndexerNodes(rootHash)
+        const [downloader, err] = await this.newDownloaderFromIndexerNodes(
+            rootHash
+        )
         if (err !== null || downloader === null) {
             return new Error(`Failed to create downloader: ${err?.message}`)
         }
@@ -278,13 +336,19 @@ export class Indexer extends HttpProvider {
      * Fetches file locations from the indexer and selects nodes with
      * the 'random' method for load balancing.
      */
-    async downloadToBlob(rootHash: string, proof?: boolean): Promise<[Blob, Error | null]>
+    async downloadToBlob(
+        rootHash: string,
+        proof?: boolean
+    ): Promise<[Blob, Error | null]>
 
     /**
      * Downloads multiple files and concatenates them into a single Blob —
      * browser and Node.js safe.
      */
-    async downloadToBlob(rootHashes: string[], proof?: boolean): Promise<[Blob, Error | null]>
+    async downloadToBlob(
+        rootHashes: string[],
+        proof?: boolean
+    ): Promise<[Blob, Error | null]>
 
     async downloadToBlob(
         rootHashOrHashes: string | string[],
@@ -293,7 +357,10 @@ export class Indexer extends HttpProvider {
         if (Array.isArray(rootHashOrHashes)) {
             const blobs: Blob[] = []
             for (const rootHash of rootHashOrHashes) {
-                const [blob, err] = await this.downloadSingleToBlob(rootHash, proof)
+                const [blob, err] = await this.downloadSingleToBlob(
+                    rootHash,
+                    proof
+                )
                 if (err !== null) {
                     return [new Blob(), err]
                 }
@@ -309,9 +376,14 @@ export class Indexer extends HttpProvider {
         rootHash: string,
         proof: boolean
     ): Promise<[Blob, Error | null]> {
-        const [downloader, err] = await this.newDownloaderFromIndexerNodes(rootHash)
+        const [downloader, err] = await this.newDownloaderFromIndexerNodes(
+            rootHash
+        )
         if (err !== null || downloader === null) {
-            return [new Blob(), new Error(`Failed to create downloader: ${err?.message}`)]
+            return [
+                new Blob(),
+                new Error(`Failed to create downloader: ${err?.message}`),
+            ]
         }
         return downloader.downloadToBlob(rootHash, proof)
     }
@@ -333,7 +405,10 @@ export class Indexer extends HttpProvider {
         )
 
         if (locations.length === 0) {
-            return [null, new Error(`No locations found for root hash: ${rootHash}`)]
+            return [
+                null,
+                new Error(`No locations found for root hash: ${rootHash}`),
+            ]
         }
 
         // Pick one complete covering set, shuffled for load balancing
@@ -341,7 +416,9 @@ export class Indexer extends HttpProvider {
         if (!ok) {
             return [
                 null,
-                new Error(`Cannot form a complete shard covering set for ${rootHash}`),
+                new Error(
+                    `Cannot form a complete shard covering set for ${rootHash}`
+                ),
             ]
         }
 

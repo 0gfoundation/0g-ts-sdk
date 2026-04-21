@@ -18,10 +18,15 @@ export interface UploadOption {
     skipTx?: boolean // skip sending transaction on chain, this can set to true only if the data has already settled on chain before
     fee?: bigint // fee to pay for data storage
     nonce?: bigint // nonce for the transaction
+    onProgress?: (message: string) => void // optional progress callback
 }
 
-export const defaultUploadOption: Omit<Required<UploadOption>, 'nonce'> & {
+export const defaultUploadOption: Omit<
+    Required<UploadOption>,
+    'nonce' | 'onProgress'
+> & {
     nonce?: bigint
+    onProgress?: (message: string) => void
 } = {
     tags: '0x',
     submitter: '',
@@ -36,9 +41,12 @@ export const defaultUploadOption: Omit<Required<UploadOption>, 'nonce'> & {
 /**
  * Merges user-provided upload options with default values
  */
-export function mergeUploadOptions(
-    userOptions: UploadOption = {}
-): Required<Omit<UploadOption, 'nonce'>> & { nonce?: bigint } {
+export function mergeUploadOptions(userOptions: UploadOption = {}): Required<
+    Omit<UploadOption, 'nonce' | 'onProgress'>
+> & {
+    nonce?: bigint
+    onProgress?: (message: string) => void
+} {
     return {
         tags: userOptions.tags ?? defaultUploadOption.tags,
         submitter: userOptions.submitter ?? defaultUploadOption.submitter,
@@ -53,5 +61,6 @@ export function mergeUploadOptions(
         skipTx: userOptions.skipTx ?? defaultUploadOption.skipTx,
         fee: userOptions.fee ?? defaultUploadOption.fee,
         nonce: userOptions.nonce,
+        onProgress: userOptions.onProgress,
     }
 }

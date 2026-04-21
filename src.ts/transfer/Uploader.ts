@@ -10,12 +10,7 @@ import {
     SubmissionStruct,
     SubmitEvent,
 } from '../contracts/flow/FixedPriceFlow.js'
-import {
-    delay,
-    getMarketContract,
-    SegmentRange,
-    txWithGasAdjustment,
-} from '../utils.js'
+import { delay, getMarketContract, SegmentRange } from '../utils.js'
 import { RetryOpts } from '../types.js'
 import { MerkleTree, nextPow2 } from '../file/index.js'
 import { encodeBase64, ethers } from 'ethers'
@@ -52,12 +47,14 @@ export class Uploader {
         file: AbstractFile,
         opts: UploadOption,
         retryOpts?: RetryOpts
-    ): Promise<[{ txHash: string; rootHash: string }, Error | null]> {
+    ): Promise<
+        [{ txHash: string; rootHash: string; txSeq: number }, Error | null]
+    > {
         const mergedOpts = mergeUploadOptions(opts)
         var [tree, err] = await file.merkleTree()
         if (err != null || tree == null || tree.rootHash() == null) {
             return [
-                { txHash: '', rootHash: '' },
+                { txHash: '', rootHash: '', txSeq: 0 },
                 new Error('Failed to create Merkle tree, ' + err),
             ]
         }
@@ -72,8 +69,8 @@ export class Uploader {
             'numChunks=' + file.numChunks()
         )
 
-        let txSeq: number | null = null
-        let receipt: any = null
+        const onProgress = mergedOpts.onProgress
+        let txHash = ''
         let info = await this.findExistingFileInfo(rootHash)
 
         if (!mergedOpts.skipTx || info === null) {
@@ -87,51 +84,55 @@ export class Uploader {
             )
             if (err !== null || submission === null) {
                 return [
-                    { txHash: '', rootHash },
+                    { txHash: '', rootHash, txSeq: 0 },
                     new Error('Failed to create submission'),
                 ]
             }
 
-            const [txReceipt, txErr] = await this.submitTransaction(
+            // Submit TX without waiting for receipt — matches Go's submitLogEntryNoReceipt
+            const [submittedTxHash, txErr] = await this.submitLogEntryNoReceipt(
                 submission,
-                opts,
-                retryOpts
+                opts
             )
             if (txErr !== null) {
-                return [{ txHash: '', rootHash }, txErr]
+                return [{ txHash: '', rootHash, txSeq: 0 }, txErr]
             }
+            txHash = submittedTxHash
+            onProgress?.(`Transaction submitted: ${txHash}`)
 
-            receipt = txReceipt
-            console.log('Transaction hash:', receipt.hash)
-            const txSeqs = await this.processLogs(receipt)
-            if (txSeqs.length === 0) {
-                return [
-                    { txHash: '', rootHash },
-                    new Error('Failed to get txSeqs'),
-                ]
-            }
-
-            console.log('Transaction sequence number:', txSeqs[0])
-            txSeq = txSeqs[0]
-            info = await this.waitForLogEntry(txSeq, false)
+            // Wait for log entry by root hash (no txSeq needed) — matches Go's uploadSlowParallel
+            info = await this.waitForLogEntry(
+                rootHash,
+                false,
+                0,
+                false,
+                onProgress
+            )
         }
-
-        const txHash = receipt ? receipt.hash : ''
 
         if (info === null) {
-            return [{ txHash, rootHash }, new Error('Failed to get log entry')]
+            return [
+                { txHash, rootHash, txSeq: 0 },
+                new Error('Failed to get log entry'),
+            ]
         }
+
+        const txSeq = info.tx.seq
+        onProgress?.(
+            `Log entry confirmed (txSeq=${txSeq}). Uploading segments...`
+        )
 
         const tasks = await this.splitTasks(info, tree, opts)
         if (tasks === null) {
             return [
-                { txHash, rootHash },
+                { txHash, rootHash, txSeq },
                 new Error('Failed to get upload tasks'),
             ]
         }
 
         if (tasks.length === 0) {
-            return [{ txHash, rootHash }, null]
+            onProgress?.('File already stored on network.')
+            return [{ txHash, rootHash, txSeq }, null]
         }
 
         console.log(
@@ -150,15 +151,23 @@ export class Uploader {
         // Check if any task failed
         for (let i = 0; i < results.length; i++) {
             if (results[i] instanceof Error) {
-                return [{ txHash, rootHash }, results[i] as Error]
+                return [{ txHash, rootHash, txSeq }, results[i] as Error]
             }
         }
 
         console.log('All tasks processed')
+        onProgress?.('Segments uploaded. Waiting for finality...')
 
-        await this.waitForLogEntry(info.tx.seq, true)
+        await this.waitForLogEntry(
+            rootHash,
+            mergedOpts.finalityRequired,
+            info.tx.seq,
+            false,
+            onProgress
+        )
+        onProgress?.('Upload finalized.')
 
-        return [{ txHash, rootHash }, null]
+        return [{ txHash, rootHash, txSeq }, null]
     }
 
     /**
@@ -173,7 +182,12 @@ export class Uploader {
         file: AbstractFile,
         opts: UploadOption = {},
         retryOpts?: RetryOpts
-    ): Promise<[{ txHashes: string[]; rootHashes: string[] }, Error | null]> {
+    ): Promise<
+        [
+            { txHashes: string[]; rootHashes: string[]; txSeqs: number[] },
+            Error | null
+        ]
+    > {
         const mergedOpts = mergeUploadOptions(opts)
 
         // Check fragment size
@@ -187,6 +201,7 @@ export class Uploader {
 
         const txHashes: string[] = []
         const rootHashes: string[] = []
+        const txSeqs: number[] = []
 
         if (file.size() <= mergedOpts.fragmentSize) {
             // Single file upload
@@ -196,10 +211,11 @@ export class Uploader {
                 retryOpts
             )
             if (err != null) {
-                return [{ txHashes, rootHashes }, err]
+                return [{ txHashes, rootHashes, txSeqs }, err]
             }
             txHashes.push(result.txHash)
             rootHashes.push(result.rootHash)
+            txSeqs.push(result.txSeq)
         } else {
             // Split and batch upload
             const fragments = file.split(mergedOpts.fragmentSize)
@@ -219,27 +235,28 @@ export class Uploader {
                         retryOpts
                     )
                     if (err != null) {
-                        return [{ txHashes, rootHashes }, err]
+                        return [{ txHashes, rootHashes, txSeqs }, err]
                     }
                     txHashes.push(result.txHash)
                     rootHashes.push(result.rootHash)
+                    txSeqs.push(result.txSeq)
                 }
             }
         }
 
-        return [{ txHashes, rootHashes }, null]
+        return [{ txHashes, rootHashes, txSeqs }, null]
     }
 
-    private async submitTransaction(
+    // submitLogEntryNoReceipt submits the TX and returns the txHash immediately
+    // without waiting for receipt — matches Go's submitLogEntryNoReceipt.
+    private async submitLogEntryNoReceipt(
         submission: SubmissionStruct,
-        opts: UploadOption = {},
-        retryOpts?: RetryOpts
-    ): Promise<[any, Error | null]> {
+        opts: UploadOption = {}
+    ): Promise<[string, Error | null]> {
         const mergedOpts = mergeUploadOptions(opts)
-        let marketAddr = await this.flow.market()
-        let marketContract = getMarketContract(marketAddr, this.provider)
-
-        let pricePerSector = await marketContract.pricePerSector()
+        const marketAddr = await this.flow.market()
+        const marketContract = getMarketContract(marketAddr, this.provider)
+        const pricePerSector = await marketContract.pricePerSector()
 
         let fee: bigint = BigInt('0')
         if (mergedOpts.fee > 0) {
@@ -248,23 +265,27 @@ export class Uploader {
             fee = calculatePrice(submission, pricePerSector)
         }
 
-        var txOpts: {
+        const txOpts: {
             value: bigint
             gasPrice?: bigint
             gasLimit?: bigint
-            nonce?: bigint
+            nonce?: number
         } = {
             value: fee,
-            nonce: mergedOpts.nonce,
+            nonce:
+                mergedOpts.nonce !== undefined
+                    ? Number(mergedOpts.nonce)
+                    : undefined,
         }
 
         if (this.gasPrice > 0) {
             txOpts.gasPrice = this.gasPrice
         } else {
-            let suggestedGasPrice = (await this.provider.getFeeData()).gasPrice
+            const suggestedGasPrice = (await this.provider.getFeeData())
+                .gasPrice
             if (suggestedGasPrice === null) {
                 return [
-                    null,
+                    '',
                     new Error(
                         'Failed to get suggested gas price, set your own gas price'
                     ),
@@ -279,20 +300,15 @@ export class Uploader {
 
         console.log('Submitting transaction with storage fee:', fee)
 
-        var [txReceipt, txErr] = await txWithGasAdjustment(
-            this.flow,
-            this.provider,
-            'submit',
-            [submission],
-            txOpts,
-            retryOpts
-        )
-
-        if (txReceipt === null || txErr !== null) {
-            return [null, new Error('Failed to submit transaction: ' + txErr)]
+        try {
+            const resp = await this.flow
+                .getFunction('submit')
+                .send(submission, txOpts)
+            console.log('Transaction submitted, hash:', resp.hash)
+            return [resp.hash, null]
+        } catch (e) {
+            return ['', e as Error]
         }
-
-        return [txReceipt, null]
     }
 
     private async resolveSubmitter(): Promise<string> {
@@ -388,8 +404,11 @@ export class Uploader {
     }
 
     async waitForLogEntry(
+        root: string,
+        finalityRequired: boolean,
         txSeq: number,
-        finalityRequired: boolean
+        useTxSeq: boolean,
+        onProgress?: (message: string) => void
     ): Promise<FileInfo | null> {
         console.log('Wait for log entry on storage node')
 
@@ -399,27 +418,35 @@ export class Uploader {
 
             let ok = true
             for (let client of this.nodes) {
-                info = await client.getFileInfoByTxSeq(txSeq)
+                if (useTxSeq) {
+                    info = await client.getFileInfoByTxSeq(txSeq)
+                } else {
+                    info = await client.getFileInfo(root, true)
+                }
+
                 if (info === null) {
-                    let logMsg = 'Log entry is unavailable yet'
+                    let logMsg = 'Waiting for storage node to sync...'
 
                     let status = await client.getStatus()
                     if (status !== null) {
                         const logSyncHeight = status.logSyncHeight
-                        logMsg = `Log entry is unavailable yet, zgsNodeSyncHeight=${logSyncHeight}`
+                        logMsg = `Waiting for storage node to sync (height=${logSyncHeight})...`
                     }
 
                     console.log(logMsg)
+                    onProgress?.(logMsg)
                     ok = false
                     break
                 }
 
                 if (finalityRequired && !info.finalized) {
+                    const msg = 'Waiting for finality confirmation...'
                     console.log(
                         'Log entry is available, but not finalized yet, ',
                         client,
                         info
                     )
+                    onProgress?.(msg)
                     ok = false
                     break
                 }
