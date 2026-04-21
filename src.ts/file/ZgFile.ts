@@ -1,4 +1,4 @@
-import { open, FileHandle } from 'node:fs/promises'
+import type { FileHandle } from 'node:fs/promises'
 import { Iterator, BlobIterator } from './Iterator/index.js'
 import { AbstractFile } from './AbstractFile.js'
 import { iteratorPaddedSize } from './utils.js'
@@ -24,8 +24,9 @@ export class ZgFile extends AbstractFile {
         return new ZgFile(fd, 0, stat.size)
     }
 
-    // NOTE: need manually close fd after use
+    // NOTE: need manually close fd after use. Node.js only.
     static async fromFilePath(path: string): Promise<ZgFile> {
+        const { open } = await import(/* webpackIgnore: true */ 'node:fs/promises')
         const fd = await open(path, 'r') // if fail, throw error
         return await ZgFile.fromNodeFileHandle(fd)
     }

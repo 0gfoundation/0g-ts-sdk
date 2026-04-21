@@ -77,7 +77,7 @@ export class Downloader {
         withProof: boolean = false
     ): Promise<Error | null> {
         // Dynamic import keeps `fs` out of browser bundles
-        const fs = await import('fs')
+        const fs = await import(/* webpackIgnore: true */ 'fs')
         const path = await import('path')
 
         if (checkExist(filename)) {
@@ -306,7 +306,7 @@ export class Downloader {
         proof: boolean
     ): Promise<Error | null> {
         // Dynamic import keeps `fs` out of browser bundles
-        const fs = await import('fs')
+        const fs = await import(/* webpackIgnore: true */ 'fs')
 
         const numChunks = GetSplitNum(info.tx.size, DEFAULT_CHUNK_SIZE)
         this.startSegmentIndex = Math.floor(

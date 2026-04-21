@@ -194,7 +194,7 @@ export class Indexer extends HttpProvider {
         proof: boolean
     ): Promise<Error | null> {
         // Dynamic import — keeps `fs` out of browser bundles
-        const fs = await import('fs')
+        const fs = await import(/* webpackIgnore: true */ 'fs')
 
         let outFile: import('fs').WriteStream
         try {

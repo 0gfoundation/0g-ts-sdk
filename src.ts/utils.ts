@@ -1,8 +1,6 @@
 import { ethers, Signer } from 'ethers'
 import { FixedPriceFlow__factory } from './contracts/flow/index.js'
 import { FixedPrice__factory } from './contracts/market/index.js'
-import fs from 'fs'
-import path from 'path'
 import { ContractRunner } from 'ethers'
 import { BaseContract } from 'ethers'
 import { DEFAULT_CHUNK_SIZE, DEFAULT_SEGMENT_MAX_CHUNKS } from './constant.js'
@@ -19,20 +17,23 @@ export function getMarketContract(address: string, runner: ContractRunner) {
 
 export const delay = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
+// Node.js only — returns false (no conflict) in browser contexts where fs is unavailable.
 export function checkExist(inputPath: string): boolean {
+    if (typeof window !== 'undefined') return false
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path') as typeof import('path')
     const dirName = path.dirname(inputPath)
     if (!fs.existsSync(dirName)) {
         return true
     }
-
     if (fs.existsSync(inputPath) && fs.lstatSync(inputPath).isDirectory()) {
         return true
     }
-    // Check if the directory exists and the file does not exist
     if (!fs.existsSync(inputPath)) {
         return false
     }
-
     return true
 }
 
