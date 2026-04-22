@@ -73,8 +73,7 @@ export class Uploader {
         let txHash = ''
         let info = await this.findExistingFileInfo(rootHash)
 
-        // Already uploaded and finalized — nothing to do
-        if (info !== null && info.finalized) {
+        if (mergedOpts.skipIfFinalized && info !== null && info.finalized) {
             onProgress?.('File already stored on network.')
             return [{ txHash: '', rootHash, txSeq: info.tx.seq }, null]
         }
