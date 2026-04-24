@@ -197,6 +197,13 @@ const config: Config = {
 
   // ts-jest config to support tests written in TypeScript
   preset: "ts-jest",
+
+  // TS source imports use .js suffixes (needed for real ESM emit) but ts-jest
+  // runs against the .ts source — strip the suffix so relative imports
+  // resolve under Jest.
+  moduleNameMapper: {
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+  },
 };
 
 export default config;
