@@ -145,6 +145,43 @@ describe('EncryptedFile iterator compatibility', () => {
     })
 })
 
+describe('Upload-then-download round-trip via primitives', () => {
+    // The Uploader/Downloader seams we rely on are (1) EncryptedFile emits
+    // header+ciphertext via readFromFile/iterator, and (2) the Downloader
+    // parses the header, resolves the key, and runs decryptFile /
+    // decryptFragmentData. These tests exercise that seam without spinning
+    // up a real StorageNode.
+
+    it('v1: encrypted bytes decrypt back via decryptFile', async () => {
+        const plain = new Uint8Array(2048)
+        for (let i = 0; i < plain.length; i++) plain[i] = (i * 31) & 0xff
+        const key = new Uint8Array(32).fill(0x99)
+
+        const ef = newSymmetricEncryptedFile(new MemData(plain), key)
+        const { buffer } = await ef.readFromFile(0, ef.size())
+        const decrypted = decryptFile(key, buffer)
+        expect(Array.from(decrypted)).toEqual(Array.from(plain))
+    })
+
+    it('v2: encrypted bytes decrypt back with recipient privkey', async () => {
+        const recipientPriv = secp256k1.utils.randomPrivateKey()
+        const recipientPub = secp256k1.getPublicKey(recipientPriv, true)
+
+        const plain = new Uint8Array(5000)
+        for (let i = 0; i < plain.length; i++) plain[i] = (i ^ 0xa5) & 0xff
+
+        const ef = newEciesEncryptedFile(new MemData(plain), recipientPub)
+        const { buffer } = await ef.readFromFile(0, ef.size())
+        const header = parseEncryptionHeader(buffer)
+        const aesKey = deriveEciesDecryptKey(
+            recipientPriv,
+            header.ephemeralPub
+        )
+        const decrypted = decryptFile(aesKey, buffer)
+        expect(Array.from(decrypted)).toEqual(Array.from(plain))
+    })
+})
+
 function concat(chunks: Uint8Array[]): Uint8Array {
     let total = 0
     for (const c of chunks) total += c.length
