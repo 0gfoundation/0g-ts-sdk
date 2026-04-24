@@ -15,8 +15,17 @@ import { RetryOpts } from '../types.js'
 import { MerkleTree, nextPow2 } from '../file/index.js'
 import { encodeBase64, ethers } from 'ethers'
 import { calculatePrice, getShardConfigs } from './utils.js'
-import { UploadOption, UploadTask, mergeUploadOptions } from './types.js'
+import {
+    EncryptionOption,
+    UploadOption,
+    UploadTask,
+    mergeUploadOptions,
+} from './types.js'
 import { AbstractFile } from '../file/AbstractFile.js'
+import {
+    newEciesEncryptedFile,
+    newSymmetricEncryptedFile,
+} from '../file/EncryptedFile.js'
 import { checkReplica, ShardConfig } from '../common/index.js'
 
 export class Uploader {
@@ -51,6 +60,9 @@ export class Uploader {
         [{ txHash: string; rootHash: string; txSeq: number }, Error | null]
     > {
         const mergedOpts = mergeUploadOptions(opts)
+        if (mergedOpts.encryption) {
+            file = this.wrapEncryption(file, mergedOpts.encryption)
+        }
         var [tree, err] = await file.merkleTree()
         if (err != null || tree == null || tree.rootHash() == null) {
             return [
@@ -254,6 +266,18 @@ export class Uploader {
 
     // submitLogEntryNoReceipt submits the TX and returns the txHash immediately
     // without waiting for receipt — matches Go's submitLogEntryNoReceipt.
+    private wrapEncryption(
+        file: AbstractFile,
+        enc: EncryptionOption
+    ): AbstractFile {
+        switch (enc.type) {
+            case 'aes256':
+                return newSymmetricEncryptedFile(file, enc.key)
+            case 'ecies':
+                return newEciesEncryptedFile(file, enc.recipientPubKey)
+        }
+    }
+
     private async submitLogEntryNoReceipt(
         submission: SubmissionStruct,
         opts: UploadOption = {}

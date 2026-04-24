@@ -8,6 +8,10 @@ export interface UploadTask {
     txSeq: number
 }
 
+export type EncryptionOption =
+    | { type: 'aes256'; key: Uint8Array }
+    | { type: 'ecies'; recipientPubKey: Uint8Array | string }
+
 export interface UploadOption {
     tags?: ethers.BytesLike // transaction tags
     submitter?: string // submission submitter address, defaults to runner address
@@ -20,14 +24,16 @@ export interface UploadOption {
     fee?: bigint // fee to pay for data storage
     nonce?: bigint // nonce for the transaction
     onProgress?: (message: string) => void // optional progress callback
+    encryption?: EncryptionOption // optional encryption; 'aes256' uses a caller-supplied 32-byte key (v1), 'ecies' derives the AES key from an ephemeral keypair and the recipient's secp256k1 pubkey (v2)
 }
 
 export const defaultUploadOption: Omit<
     Required<UploadOption>,
-    'nonce' | 'onProgress'
+    'nonce' | 'onProgress' | 'encryption'
 > & {
     nonce?: bigint
     onProgress?: (message: string) => void
+    encryption?: EncryptionOption
 } = {
     tags: '0x',
     submitter: '',
@@ -44,10 +50,11 @@ export const defaultUploadOption: Omit<
  * Merges user-provided upload options with default values
  */
 export function mergeUploadOptions(userOptions: UploadOption = {}): Required<
-    Omit<UploadOption, 'nonce' | 'onProgress'>
+    Omit<UploadOption, 'nonce' | 'onProgress' | 'encryption'>
 > & {
     nonce?: bigint
     onProgress?: (message: string) => void
+    encryption?: EncryptionOption
 } {
     return {
         tags: userOptions.tags ?? defaultUploadOption.tags,
@@ -66,5 +73,6 @@ export function mergeUploadOptions(userOptions: UploadOption = {}): Required<
         fee: userOptions.fee ?? defaultUploadOption.fee,
         nonce: userOptions.nonce,
         onProgress: userOptions.onProgress,
+        encryption: userOptions.encryption,
     }
 }
