@@ -60,7 +60,10 @@ export class Indexer extends HttpProvider {
             method: 'indexer_getFileLocations',
             params: [rootHash],
         })
-        return res as ShardedNode[]
+        // The indexer may legitimately return null (e.g. for a root hash that
+        // has no known locations yet). Normalize to [] so callers can treat
+        // "no results" uniformly and don't crash reading `.length` / `.map`.
+        return (res ?? []) as ShardedNode[]
     }
 
     // ─── Node selection ───────────────────────────────────────────────────

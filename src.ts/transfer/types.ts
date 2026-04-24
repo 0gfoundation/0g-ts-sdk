@@ -20,7 +20,7 @@ export interface UploadOption {
     expectedReplica?: number // expected number of replications
     fragmentSize?: number // size of each fragment in bytes
     skipTx?: boolean // skip sending transaction on chain, this can set to true only if the data has already settled on chain before
-    skipIfFinalized?: boolean // skip upload entirely if the file already exists and is finalized on storage nodes
+    skipIfFinalized?: boolean // skip upload entirely if the file already exists and is finalized on storage nodes (default: true — explicitly set false to force a re-upload; you'll pay gas and storage fee again)
     fee?: bigint // fee to pay for data storage
     nonce?: bigint // nonce for the transaction
     onProgress?: (message: string) => void // optional progress callback
@@ -42,7 +42,7 @@ export const defaultUploadOption: Omit<
     expectedReplica: 1,
     fragmentSize: 1024 * 1024 * 1024 * 4, // 4GB
     skipTx: false,
-    skipIfFinalized: false,
+    skipIfFinalized: true,
     fee: BigInt(0),
 }
 
