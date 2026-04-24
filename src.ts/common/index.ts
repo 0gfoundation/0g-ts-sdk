@@ -3,6 +3,7 @@ import { ShardConfig, ShardedNode } from './types.js'
 
 export * from './types.js'
 export * from './segment_tree.js'
+export * from './encryption.js'
 
 /**
  * Controls the order in which candidate nodes are evaluated by selectNodes.

@@ -1,4 +1,4 @@
-const { MerkleTree, LeafNode } = require('../lib.commonjs/MerkleTree.js');
+const { MerkleTree, LeafNode } = require('../lib.commonjs/file/MerkleTree.js');
 
 test("Node.fromLeftAndRight", () => {
     const left = LeafNode.fromContent(createChunkData(0));
@@ -80,7 +80,7 @@ function calculateRootBySegments(chunks, chunksPerSegment) {
     const builder = new MerkleTree();
 
     for (let i = 0; i < chunks; i += chunksPerSegment) {
-        const segBuilder = new ;
+        const segBuilder = new MerkleTree();
 
         for (let j = 0; j < chunksPerSegment; j++) {
             const index = i + j;

@@ -5,18 +5,64 @@ import { decodeBase64 } from 'ethers'
 import { Hash } from '../types.js'
 import { getShardConfigs } from './utils.js'
 import { ShardConfig } from '../common/index.js'
+import {
+    EncryptionHeader,
+    parseEncryptionHeader,
+    resolveDecryptionKey,
+    decryptFile,
+    decryptFragmentData,
+    normalizePrivKey,
+} from '../common/encryption.js'
 
 export class Downloader {
     nodes: StorageNode[]
     shardConfigs: ShardConfig[]
     startSegmentIndex: number
     endSegmentIndex: number
+    private symmetricKey?: Uint8Array
+    private privateKey?: Uint8Array
 
     constructor(nodes: StorageNode[]) {
         this.nodes = nodes
         this.shardConfigs = []
         this.startSegmentIndex = 0
         this.endSegmentIndex = 0
+    }
+
+    // Set the v1 symmetric AES-256 key (32 bytes) used when the downloaded
+    // file's encryption header has version=0x01.
+    withSymmetricKey(key: Uint8Array | string): this {
+        let bytes: Uint8Array
+        if (typeof key === 'string') {
+            const clean = key.startsWith('0x') ? key.slice(2) : key
+            bytes = new Uint8Array(clean.length / 2)
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = parseInt(clean.substr(i * 2, 2), 16)
+            }
+        } else {
+            bytes = key
+        }
+        if (bytes.length !== 32) {
+            throw new Error(
+                `symmetric key must be 32 bytes, got ${bytes.length}`
+            )
+        }
+        this.symmetricKey = bytes
+        return this
+    }
+
+    // Set the secp256k1 private key used when the downloaded file's
+    // encryption header has version=0x02 (ECIES).
+    withPrivateKey(key: Uint8Array | string): this {
+        this.privateKey = normalizePrivKey(key)
+        return this
+    }
+
+    private hasDecryptionKey(): boolean {
+        return (
+            this.symmetricKey !== undefined ||
+            this.privateKey !== undefined
+        )
     }
 
     // ─── File-system download (Node.js only) ─────────────────────────────
@@ -55,6 +101,32 @@ export class Downloader {
     }
 
     async downloadFile(
+        root: Hash,
+        filePath: string,
+        proof: boolean
+    ): Promise<Error | null> {
+        const rawErr = await this.downloadFileRaw(root, filePath, proof)
+        if (rawErr != null) return rawErr
+
+        if (this.hasDecryptionKey()) {
+            const fs = await import(/* webpackIgnore: true */ 'fs')
+            const encrypted = new Uint8Array(fs.readFileSync(filePath))
+            const header = parseEncryptionHeader(encrypted)
+            const aesKey = resolveDecryptionKey(
+                this.symmetricKey,
+                this.privateKey,
+                header
+            )
+            const plaintext = decryptFile(aesKey, encrypted)
+            fs.writeFileSync(filePath, plaintext)
+        }
+        return null
+    }
+
+    // Download a single root to `filePath` without running the post-download
+    // decrypt step — used by the multi-root fragment path, which coordinates
+    // its own cross-fragment decrypt.
+    private async downloadFileRaw(
         root: Hash,
         filePath: string,
         proof: boolean
@@ -113,12 +185,18 @@ export class Downloader {
         }
 
         const tempFiles: string[] = []
+        const decrypting = this.hasDecryptionKey()
+        let header: EncryptionHeader | undefined
+        let aesKey: Uint8Array | undefined
+        let cumulativeDataOffset = 0
+
         try {
-            for (const root of roots) {
+            for (let i = 0; i < roots.length; i++) {
+                const root = roots[i]
                 const tempFile = path.join(outputDir, `${root}.temp`)
                 tempFiles.push(tempFile)
 
-                const downloadErr = await this.downloadFile(
+                const downloadErr = await this.downloadFileRaw(
                     root,
                     tempFile,
                     withProof
@@ -130,8 +208,38 @@ export class Downloader {
                 }
 
                 try {
-                    const data = fs.readFileSync(tempFile)
-                    fs.writeSync(outFileHandle, new Uint8Array(data))
+                    const data = new Uint8Array(fs.readFileSync(tempFile))
+                    let toWrite: Uint8Array = data
+                    if (decrypting) {
+                        if (i === 0) {
+                            header = parseEncryptionHeader(data)
+                            aesKey = resolveDecryptionKey(
+                                this.symmetricKey,
+                                this.privateKey,
+                                header
+                            )
+                            const res = decryptFragmentData(
+                                aesKey,
+                                header,
+                                data,
+                                true,
+                                0
+                            )
+                            toWrite = res.plaintext
+                            cumulativeDataOffset = res.newOffset
+                        } else {
+                            const res = decryptFragmentData(
+                                aesKey!,
+                                header!,
+                                data,
+                                false,
+                                cumulativeDataOffset
+                            )
+                            toWrite = res.plaintext
+                            cumulativeDataOffset = res.newOffset
+                        }
+                    }
+                    fs.writeSync(outFileHandle, toWrite)
                 } catch (err) {
                     return new Error(
                         `Failed to copy content from temp file ${tempFile}: ${err}`
@@ -203,6 +311,30 @@ export class Downloader {
         root: Hash,
         proof: boolean
     ): Promise<[Blob, Error | null]> {
+        const [rawBlob, err] = await this.downloadFileRawToBlob(root, proof)
+        if (err != null) return [new Blob(), err]
+
+        if (!this.hasDecryptionKey()) return [rawBlob, null]
+
+        const encrypted = new Uint8Array(await rawBlob.arrayBuffer())
+        const header = parseEncryptionHeader(encrypted)
+        const aesKey = resolveDecryptionKey(
+            this.symmetricKey,
+            this.privateKey,
+            header
+        )
+        const plaintext = decryptFile(aesKey, encrypted)
+        // Cast required: Uint8Array<ArrayBufferLike> doesn't line up with
+        // BlobPart in TypeScript's stricter lib.dom.
+        return [new Blob([plaintext] as unknown as BlobPart[]), null]
+    }
+
+    // Download a single root to a Blob without the post-download decrypt
+    // step — used by the multi-root fragment path.
+    private async downloadFileRawToBlob(
+        root: Hash,
+        proof: boolean
+    ): Promise<[Blob, Error | null]> {
         const [info, err] = await this.queryFile(root)
         if (err != null || info === null) {
             return [
@@ -264,15 +396,51 @@ export class Downloader {
         roots: Hash[],
         proof: boolean
     ): Promise<[Blob, Error | null]> {
-        const blobs: Blob[] = []
-        for (const root of roots) {
-            const [blob, err] = await this.downloadFileToBlob(root, proof)
-            if (err != null) {
-                return [new Blob(), err]
+        const decrypting = this.hasDecryptionKey()
+        const parts: Uint8Array[] = []
+        const rawBlobs: Blob[] = []
+        let header: EncryptionHeader | undefined
+        let aesKey: Uint8Array | undefined
+        let cumulativeDataOffset = 0
+
+        for (let i = 0; i < roots.length; i++) {
+            const [blob, err] = await this.downloadFileRawToBlob(
+                roots[i],
+                proof
+            )
+            if (err != null) return [new Blob(), err]
+
+            if (!decrypting) {
+                rawBlobs.push(blob)
+                continue
             }
-            blobs.push(blob)
+
+            const data = new Uint8Array(await blob.arrayBuffer())
+            if (i === 0) {
+                header = parseEncryptionHeader(data)
+                aesKey = resolveDecryptionKey(
+                    this.symmetricKey,
+                    this.privateKey,
+                    header
+                )
+                const res = decryptFragmentData(aesKey, header, data, true, 0)
+                parts.push(res.plaintext)
+                cumulativeDataOffset = res.newOffset
+            } else {
+                const res = decryptFragmentData(
+                    aesKey!,
+                    header!,
+                    data,
+                    false,
+                    cumulativeDataOffset
+                )
+                parts.push(res.plaintext)
+                cumulativeDataOffset = res.newOffset
+            }
         }
-        return [new Blob(blobs), null]
+
+        if (!decrypting) return [new Blob(rawBlobs), null]
+        return [new Blob(parts as unknown as BlobPart[]), null]
     }
 
     // ─── Shared helpers ───────────────────────────────────────────────────
