@@ -3,6 +3,7 @@ import {
     parseEncryptionHeader,
     resolveDecryptionKey,
     decryptFile,
+    decryptFragmentData,
     ECIES_VERSION,
     EncryptionHeader,
 } from '../common/encryption.js'
@@ -64,4 +65,64 @@ export function tryDecrypt(
     } catch {
         return { bytes: encrypted, decrypted: false }
     }
+}
+
+// Best-effort multi-fragment decrypt. Mirrors 0g-storage-client's
+// indexer/client.go:390 downloadEncryptedFragments — parses the encryption
+// header from fragment 0, resolves the AES key from caller-supplied
+// material, then decrypts each subsequent fragment with the correct CTR
+// offset so a fragment that starts mid-stream decrypts to the same bytes
+// as a full-file decrypt.
+//
+// Returns an array of plaintext fragments on success, or null if any step
+// fails (header missing/malformed, embedded ephemeral pubkey off-curve,
+// wrong key material, decrypt error). The caller falls back to the raw
+// concatenation in that case.
+export function tryDecryptFragments(
+    fragments: Uint8Array[],
+    symmetricKey: Uint8Array | undefined,
+    privateKey: Uint8Array | string | undefined
+): Uint8Array[] | null {
+    if (fragments.length === 0) return []
+
+    let header: EncryptionHeader
+    try {
+        header = parseEncryptionHeader(fragments[0])
+    } catch {
+        return null
+    }
+
+    if (header.version === ECIES_VERSION) {
+        try {
+            secp256k1.ProjectivePoint.fromHex(header.ephemeralPub)
+        } catch {
+            return null
+        }
+    }
+
+    let aesKey: Uint8Array
+    try {
+        aesKey = resolveDecryptionKey(symmetricKey, privateKey, header)
+    } catch {
+        return null
+    }
+
+    const plaintexts: Uint8Array[] = []
+    let cumulativeDataOffset = 0
+    for (let i = 0; i < fragments.length; i++) {
+        try {
+            const { plaintext, newOffset } = decryptFragmentData(
+                aesKey,
+                header,
+                fragments[i],
+                i === 0,
+                cumulativeDataOffset
+            )
+            plaintexts.push(plaintext)
+            cumulativeDataOffset = newOffset
+        } catch {
+            return null
+        }
+    }
+    return plaintexts
 }

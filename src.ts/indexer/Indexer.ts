@@ -21,7 +21,7 @@ import {
     EncryptionHeader,
     parseEncryptionHeader,
 } from '../common/encryption.js'
-import { tryDecrypt } from './decryption.js'
+import { tryDecrypt, tryDecryptFragments } from './decryption.js'
 
 function hexStringToBytes(h: string): Uint8Array {
     const clean = h.startsWith('0x') ? h.slice(2) : h
@@ -362,8 +362,10 @@ export class Indexer extends HttpProvider {
 
     /**
      * Downloads multiple files and concatenates them into a single Blob —
-     * browser and Node.js safe. Multi-root decryption is not supported here;
-     * for that, use Downloader directly with `withPrivateKey` / `withSymmetricKey`.
+     * browser and Node.js safe. When `decryption` is supplied, mirrors the
+     * Go client's multi-root pattern: downloads each fragment raw, parses
+     * the encryption header from fragment 0, and runs DecryptFragmentData
+     * across fragments with correct CTR-offset tracking.
      */
     async downloadToBlob(
         rootHashes: string[],
@@ -375,21 +377,56 @@ export class Indexer extends HttpProvider {
         opts: DownloadOption = {}
     ): Promise<[Blob, Error | null]> {
         if (Array.isArray(rootHashOrHashes)) {
-            const blobs: Blob[] = []
-            for (const rootHash of rootHashOrHashes) {
-                const [blob, err] = await this.downloadSingleToBlob(
-                    rootHash,
-                    opts
-                )
-                if (err !== null) {
-                    return [new Blob(), err]
-                }
-                blobs.push(blob)
-            }
-            return [new Blob(blobs), null]
+            return this.downloadFragmentsToBlob(rootHashOrHashes, opts)
         } else {
             return this.downloadSingleToBlob(rootHashOrHashes, opts)
         }
+    }
+
+    // Downloads each root raw, then (if `decryption` is supplied) coordinates
+    // a single cross-fragment AES-CTR decrypt using the header from root[0].
+    // Mirrors 0g-storage-client indexer/client.go:390. Best-effort: on any
+    // decrypt-related failure (missing header, wrong key, non-curve ephemeral
+    // pubkey), falls back to the raw-concat path silently.
+    private async downloadFragmentsToBlob(
+        rootHashes: string[],
+        opts: DownloadOption
+    ): Promise<[Blob, Error | null]> {
+        // Step 1 — download all fragments raw.
+        const rawParts: Uint8Array[] = []
+        for (const rootHash of rootHashes) {
+            const [blob, err] = await this.downloadSingleToBlob(rootHash, {
+                proof: opts.proof,
+                // force raw: ignore decryption on per-fragment download; we
+                // coordinate the decrypt across fragments below.
+                decryption: undefined,
+            })
+            if (err !== null) return [new Blob(), err]
+            rawParts.push(new Uint8Array(await blob.arrayBuffer()))
+        }
+
+        if (!opts.decryption) {
+            return [new Blob(rawParts as unknown as BlobPart[]), null]
+        }
+
+        // Step 2 — parse header from fragment 0, resolve key, decrypt each
+        // fragment with the correct CTR offset.
+        const symmetricKey =
+            typeof opts.decryption.symmetricKey === 'string'
+                ? hexStringToBytes(opts.decryption.symmetricKey)
+                : opts.decryption.symmetricKey
+        const privateKey = opts.decryption.privateKey
+
+        const plaintexts = tryDecryptFragments(
+            rawParts,
+            symmetricKey,
+            privateKey
+        )
+        if (plaintexts === null) {
+            // Fall back: not encrypted, wrong key, or malformed — return raw.
+            return [new Blob(rawParts as unknown as BlobPart[]), null]
+        }
+        return [new Blob(plaintexts as unknown as BlobPart[]), null]
     }
 
     private async downloadSingleToBlob(
