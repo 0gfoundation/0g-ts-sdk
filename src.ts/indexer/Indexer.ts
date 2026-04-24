@@ -1,5 +1,10 @@
 import { HttpProvider } from 'open-jsonrpc-provider'
-import { IpLocation, ShardedNodes, TransactionOptions } from './types.js'
+import {
+    DownloadOption,
+    IpLocation,
+    ShardedNodes,
+    TransactionOptions,
+} from './types.js'
 import { selectNodes, SelectMethod, ShardedNode } from '../common/index.js'
 import {
     UploadOption,
@@ -12,6 +17,20 @@ import { RetryOpts } from '../types.js'
 import { AbstractFile } from '../file/AbstractFile.js'
 import { Signer } from 'ethers'
 import { getFlowContract } from '../utils.js'
+import {
+    EncryptionHeader,
+    parseEncryptionHeader,
+} from '../common/encryption.js'
+import { tryDecrypt, tryDecryptFragments } from './decryption.js'
+
+function hexStringToBytes(h: string): Uint8Array {
+    const clean = h.startsWith('0x') ? h.slice(2) : h
+    const out = new Uint8Array(clean.length / 2)
+    for (let i = 0; i < out.length; i++) {
+        out[i] = parseInt(clean.substr(i * 2, 2), 16)
+    }
+    return out
+}
 // NOTE: `fs` is intentionally NOT imported at the top level so that this
 // module is safe to bundle for browser environments.  The two methods that
 // actually need `fs` (`downloadFragments`, `downloadSingle`) import it
@@ -338,43 +357,81 @@ export class Indexer extends HttpProvider {
      */
     async downloadToBlob(
         rootHash: string,
-        proof?: boolean
+        opts?: DownloadOption
     ): Promise<[Blob, Error | null]>
 
     /**
      * Downloads multiple files and concatenates them into a single Blob —
-     * browser and Node.js safe.
+     * browser and Node.js safe. When `decryption` is supplied, mirrors the
+     * Go client's multi-root pattern: downloads each fragment raw, parses
+     * the encryption header from fragment 0, and runs DecryptFragmentData
+     * across fragments with correct CTR-offset tracking.
      */
     async downloadToBlob(
         rootHashes: string[],
-        proof?: boolean
+        opts?: DownloadOption
     ): Promise<[Blob, Error | null]>
 
     async downloadToBlob(
         rootHashOrHashes: string | string[],
-        proof: boolean = false
+        opts: DownloadOption = {}
     ): Promise<[Blob, Error | null]> {
         if (Array.isArray(rootHashOrHashes)) {
-            const blobs: Blob[] = []
-            for (const rootHash of rootHashOrHashes) {
-                const [blob, err] = await this.downloadSingleToBlob(
-                    rootHash,
-                    proof
-                )
-                if (err !== null) {
-                    return [new Blob(), err]
-                }
-                blobs.push(blob)
-            }
-            return [new Blob(blobs), null]
+            return this.downloadFragmentsToBlob(rootHashOrHashes, opts)
         } else {
-            return this.downloadSingleToBlob(rootHashOrHashes, proof)
+            return this.downloadSingleToBlob(rootHashOrHashes, opts)
         }
+    }
+
+    // Downloads each root raw, then (if `decryption` is supplied) coordinates
+    // a single cross-fragment AES-CTR decrypt using the header from root[0].
+    // Mirrors 0g-storage-client indexer/client.go:390. Best-effort: on any
+    // decrypt-related failure (missing header, wrong key, non-curve ephemeral
+    // pubkey), falls back to the raw-concat path silently.
+    private async downloadFragmentsToBlob(
+        rootHashes: string[],
+        opts: DownloadOption
+    ): Promise<[Blob, Error | null]> {
+        // Step 1 — download all fragments raw.
+        const rawParts: Uint8Array[] = []
+        for (const rootHash of rootHashes) {
+            const [blob, err] = await this.downloadSingleToBlob(rootHash, {
+                proof: opts.proof,
+                // force raw: ignore decryption on per-fragment download; we
+                // coordinate the decrypt across fragments below.
+                decryption: undefined,
+            })
+            if (err !== null) return [new Blob(), err]
+            rawParts.push(new Uint8Array(await blob.arrayBuffer()))
+        }
+
+        if (!opts.decryption) {
+            return [new Blob(rawParts as unknown as BlobPart[]), null]
+        }
+
+        // Step 2 — parse header from fragment 0, resolve key, decrypt each
+        // fragment with the correct CTR offset.
+        const symmetricKey =
+            typeof opts.decryption.symmetricKey === 'string'
+                ? hexStringToBytes(opts.decryption.symmetricKey)
+                : opts.decryption.symmetricKey
+        const privateKey = opts.decryption.privateKey
+
+        const plaintexts = tryDecryptFragments(
+            rawParts,
+            symmetricKey,
+            privateKey
+        )
+        if (plaintexts === null) {
+            // Fall back: not encrypted, wrong key, or malformed — return raw.
+            return [new Blob(rawParts as unknown as BlobPart[]), null]
+        }
+        return [new Blob(plaintexts as unknown as BlobPart[]), null]
     }
 
     private async downloadSingleToBlob(
         rootHash: string,
-        proof: boolean
+        opts: DownloadOption
     ): Promise<[Blob, Error | null]> {
         const [downloader, err] = await this.newDownloaderFromIndexerNodes(
             rootHash
@@ -385,7 +442,70 @@ export class Indexer extends HttpProvider {
                 new Error(`Failed to create downloader: ${err?.message}`),
             ]
         }
-        return downloader.downloadToBlob(rootHash, proof)
+
+        const [rawBlob, dlErr] = await downloader.downloadToBlob(
+            rootHash,
+            opts.proof ?? false
+        )
+        if (dlErr !== null) return [new Blob(), dlErr]
+
+        if (!opts.decryption) return [rawBlob, null]
+
+        // Best-effort decrypt: if the file is encrypted and the caller
+        // supplied the matching key, return plaintext; otherwise return the
+        // raw bytes unchanged (see DownloadOption.decryption).
+        const encrypted = new Uint8Array(await rawBlob.arrayBuffer())
+        const symmetricKey =
+            typeof opts.decryption.symmetricKey === 'string'
+                ? hexStringToBytes(opts.decryption.symmetricKey)
+                : opts.decryption.symmetricKey
+        const { bytes, decrypted } = tryDecrypt(encrypted, {
+            symmetricKey,
+            privateKey: opts.decryption.privateKey,
+        })
+        if (!decrypted) return [rawBlob, null]
+        // Cast: Uint8Array<ArrayBufferLike> vs strict BlobPart
+        return [new Blob([bytes] as unknown as BlobPart[]), null]
+    }
+
+    /**
+     * Peek at a file's first bytes to see whether it carries a v1 / v2
+     * encryption header, without downloading the whole file.
+     *
+     * Returns the parsed EncryptionHeader on match, or null if the file is
+     * not encrypted (or the header is malformed). Use this to render
+     * decryption UI (e.g. a key-input field) before the full download.
+     */
+    async peekHeader(
+        rootHash: string
+    ): Promise<[EncryptionHeader | null, Error | null]> {
+        const [downloader, err] = await this.newDownloaderFromIndexerNodes(
+            rootHash
+        )
+        if (err !== null || downloader === null) {
+            return [
+                null,
+                new Error(`Failed to create downloader: ${err?.message}`),
+            ]
+        }
+        const [rawBlob, dlErr] = await downloader.downloadToBlob(
+            rootHash,
+            false
+        )
+        if (dlErr !== null) return [null, dlErr]
+
+        // We only need the first 50 bytes for a v2 header (or 17 for v1).
+        // The downloader currently always returns the full file; slicing
+        // avoids copying the whole body into Uint8Array.
+        const prefixSize = Math.min(50, rawBlob.size)
+        const prefix = new Uint8Array(
+            await rawBlob.slice(0, prefixSize).arrayBuffer()
+        )
+        try {
+            return [parseEncryptionHeader(prefix), null]
+        } catch {
+            return [null, null]
+        }
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────
