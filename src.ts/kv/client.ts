@@ -117,7 +117,11 @@ export class KvClient {
         }
 
         // Slow path: value exceeds MAX_QUERY_SIZE; fetch the rest.
-        const full = await this.getValue(streamId, seg.key, version)
+        // The response's `seg.key` is base64-encoded; decode to raw
+        // bytes before re-passing so the inner getValue's keyToBase64
+        // doesn't try to arrayify a base64 string.
+        const keyBytes = Buffer.from(seg.key as unknown as string, 'base64')
+        const full = await this.getValue(streamId, keyBytes, version)
         if (full === null) return null
         return {
             key: seg.key,

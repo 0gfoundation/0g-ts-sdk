@@ -1,4 +1,4 @@
-import { Bytes } from '@ethersproject/bytes'
+import { BytesLike } from '@ethersproject/bytes'
 import { KeyValue } from '../node/index.js'
 import { KvClient } from './client.js'
 
@@ -33,16 +33,21 @@ export class KvIterator {
             this.currentPair = undefined
             return null
         }
+        // The RPC returns `kv.key` as a base64-encoded string (the
+        // server's wire format) despite its `Bytes` type. Decode once
+        // here so `currentPair.key` is honest raw bytes for both
+        // downstream client calls and external consumers.
+        const keyBytes = Buffer.from(kv.key as unknown as string, 'base64')
         let value = await this.client.getValue(
             this.streamId,
-            kv.key,
+            keyBytes,
             kv.version
         )
         if (value === null) {
             return new Error('errValueNotFound')
         }
         this.currentPair = {
-            key: kv.key,
+            key: keyBytes,
             data: value.data,
             size: value.size,
             version: kv.version,
@@ -50,7 +55,7 @@ export class KvIterator {
         return null
     }
 
-    async seekBefore(key: Bytes): Promise<Error | null> {
+    async seekBefore(key: BytesLike): Promise<Error | null> {
         let kv = await this.client.getPrev(
             this.streamId,
             key,
@@ -62,7 +67,7 @@ export class KvIterator {
         return this.move(kv)
     }
 
-    async seekAfter(key: Bytes): Promise<Error | null> {
+    async seekAfter(key: BytesLike): Promise<Error | null> {
         let kv = await this.client.getNext(
             this.streamId,
             key,

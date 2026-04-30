@@ -1,7 +1,16 @@
 import { HttpProvider } from 'open-jsonrpc-provider'
-import { BytesLike, hexlify } from '@ethersproject/bytes'
+import { BytesLike, arrayify } from '@ethersproject/bytes'
 import { KeyValue, Value } from './types'
 import { Hash } from '../types'
+
+/**
+ * The KV node's JSON-RPC wire format expects keys as base64-encoded
+ * strings. Callers can pass either a Uint8Array or a hex string
+ * (`BytesLike`); we normalize to bytes via `arrayify` then base64.
+ */
+function keyToBase64(key: BytesLike): string {
+    return Buffer.from(arrayify(key)).toString('base64')
+}
 
 export class StorageKv extends HttpProvider {
     constructor(url: string) {
@@ -15,7 +24,7 @@ export class StorageKv extends HttpProvider {
         length: number,
         version?: number
     ): Promise<Value> {
-        let params: any = [streamId, hexlify(key), startIndex, length]
+        let params: any = [streamId, keyToBase64(key), startIndex, length]
         if (version !== undefined) {
             params.push(version)
         }
@@ -38,7 +47,7 @@ export class StorageKv extends HttpProvider {
     ): Promise<KeyValue> {
         let params: any = [
             streamId,
-            hexlify(key),
+            keyToBase64(key),
             startIndex,
             length,
             inclusive,
@@ -65,7 +74,7 @@ export class StorageKv extends HttpProvider {
     ): Promise<KeyValue> {
         let params: any = [
             streamId,
-            hexlify(key),
+            keyToBase64(key),
             startIndex,
             length,
             inclusive,
@@ -141,7 +150,7 @@ export class StorageKv extends HttpProvider {
         key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [account, streamId, hexlify(key)]
+        let params: any = [account, streamId, keyToBase64(key)]
         if (version !== undefined) {
             params.push(version)
         }
@@ -176,7 +185,7 @@ export class StorageKv extends HttpProvider {
         key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [stremId, hexlify(key)]
+        let params: any = [stremId, keyToBase64(key)]
         if (version !== undefined) {
             params.push(version)
         }
@@ -194,7 +203,7 @@ export class StorageKv extends HttpProvider {
         key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [account, streamId, hexlify(key)]
+        let params: any = [account, streamId, keyToBase64(key)]
         if (version !== undefined) {
             params.push(version)
         }
