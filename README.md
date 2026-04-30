@@ -13,7 +13,7 @@ This is the JavaScript SDK for 0g-storage. Features include:
 ## Install
 
 ```sh
-npm install @0gfoundation/0g-ts-sdk ethers
+npm install @0gfoundation/0g-storage-ts-sdk ethers
 ```
 
 `ethers` is a peer dependency of this project.
@@ -25,7 +25,7 @@ npm install @0gfoundation/0g-ts-sdk ethers
 Use `ZgFile` to create a file object, then call `merkleTree` method to get the merkle tree of the file.
 
 ```js
-import { Indexer, ZgFile } from '@0gfoundation/0g-ts-sdk';
+import { Indexer, ZgFile } from '@0gfoundation/0g-storage-ts-sdk';
 import { ethers } from 'ethers';
 import { exit } from 'process';
 
@@ -42,7 +42,7 @@ await file.close();
 Upload file to 0g-storage:
 
 ```js
-import { getFlowContract } from '@0gfoundation/0g-ts-sdk';
+import { getFlowContract } from '@0gfoundation/0g-storage-ts-sdk';
 const evmRpc = 'https://evmrpc-testnet.0g.ai';
 const privateKey = ''; // with balance to pay for gas
 const indRpc = 'https://indexer-storage-testnet-turbo.0g.ai'; // indexer rpc
@@ -158,7 +158,7 @@ export default defineConfig({
 Now, you can import SDK files with the `/browser` suffix:
 
 ```ts
-import { Indexer, Blob } from '@0gfoundation/0g-ts-sdk/browser';
+import { Indexer, Blob } from '@0gfoundation/0g-storage-ts-sdk/browser';
 ```
 
 Check codes in [examples](./examples) for more details.
