@@ -1,6 +1,6 @@
 {
-  "name": "@0gfoundation/0g-ts-sdk",
-  "version": "1.2.6",
+  "name": "@0gfoundation/0g-storage-ts-sdk",
+  "version": "1.2.9",
   "description": "JS/TS SDK for 0G Storage",
   "main": "./lib.commonjs/index.js",
   "module": "./lib.esm/index.js",
@@ -36,7 +36,7 @@
     "release": "npm run build-all && npm run gen-type-package-json && npm run build-dist"
   },
   "keywords": [],
-  "author": "0G Labs",
+  "author": "0G Foundation",
   "license": "ISC",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.4",
@@ -74,10 +74,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0gfoundation/0g-ts-sdk.git"
+    "url": "git+https://github.com/0gfoundation/0g-storage-ts-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/0gfoundation/0g-ts-sdk/issues"
+    "url": "https://github.com/0gfoundation/0g-storage-ts-sdk/issues"
   },
-  "homepage": "https://github.com/0gfoundation/0g-ts-sdk#readme"
+  "homepage": "https://github.com/0gfoundation/0g-storage-ts-sdk#readme"
 }
