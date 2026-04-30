@@ -1,5 +1,5 @@
 import { HttpProvider } from 'open-jsonrpc-provider'
-import { Bytes } from '@ethersproject/bytes'
+import { BytesLike, hexlify } from '@ethersproject/bytes'
 import { KeyValue, Value } from './types'
 import { Hash } from '../types'
 
@@ -10,12 +10,12 @@ export class StorageKv extends HttpProvider {
 
     async getValue(
         streamId: Hash,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         version?: number
     ): Promise<Value> {
-        let params = [streamId, key, startIndex, length]
+        let params: any = [streamId, hexlify(key), startIndex, length]
         if (version !== undefined) {
             params.push(version)
         }
@@ -30,13 +30,19 @@ export class StorageKv extends HttpProvider {
 
     async getNext(
         streamId: Hash,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         inclusive: boolean,
         version?: number
     ): Promise<KeyValue> {
-        let params: any = [streamId, key, startIndex, length, inclusive]
+        let params: any = [
+            streamId,
+            hexlify(key),
+            startIndex,
+            length,
+            inclusive,
+        ]
         if (version !== undefined) {
             params.push(version)
         }
@@ -51,13 +57,19 @@ export class StorageKv extends HttpProvider {
 
     async getPrev(
         streamId: Hash,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         inclusive: boolean,
         version?: number
     ): Promise<KeyValue> {
-        let params = [streamId, key, startIndex, length, inclusive]
+        let params: any = [
+            streamId,
+            hexlify(key),
+            startIndex,
+            length,
+            inclusive,
+        ]
         if (version !== undefined) {
             params.push(version)
         }
@@ -126,10 +138,10 @@ export class StorageKv extends HttpProvider {
     async hasWritePermission(
         account: Hash,
         streamId: Hash,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [account, streamId, key]
+        let params: any = [account, streamId, hexlify(key)]
         if (version !== undefined) {
             params.push(version)
         }
@@ -161,10 +173,10 @@ export class StorageKv extends HttpProvider {
 
     async isSpecialKey(
         stremId: Hash,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [stremId, key]
+        let params: any = [stremId, hexlify(key)]
         if (version !== undefined) {
             params.push(version)
         }
@@ -179,10 +191,10 @@ export class StorageKv extends HttpProvider {
     async isWriterOfKey(
         account: Hash,
         streamId: Hash,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
-        let params: any = [account, streamId, key]
+        let params: any = [account, streamId, hexlify(key)]
         if (version !== undefined) {
             params.push(version)
         }

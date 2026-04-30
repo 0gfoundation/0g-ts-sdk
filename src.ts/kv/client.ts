@@ -1,4 +1,4 @@
-import { Bytes } from '@ethersproject/bytes'
+import { BytesLike } from '@ethersproject/bytes'
 import { KeyValue, StorageKv, Value } from '../node/index.js'
 import { KvIterator } from './iterator.js'
 import { MAX_QUERY_SIZE } from './constants.js'
@@ -17,7 +17,7 @@ export class KvClient {
 
     async getValue(
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<Value | null> {
         let val: Value = {
@@ -57,7 +57,7 @@ export class KvClient {
 
     async get(
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         version?: number
@@ -67,7 +67,7 @@ export class KvClient {
 
     async getNext(
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         inclusive: boolean,
@@ -85,7 +85,7 @@ export class KvClient {
 
     async getPrev(
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         startIndex: number,
         length: number,
         inclusive: boolean,
@@ -130,7 +130,7 @@ export class KvClient {
     async hasWritePermission(
         account: string,
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
         return this.inner.hasWritePermission(account, streamId, key, version)
@@ -146,7 +146,7 @@ export class KvClient {
 
     async isSpecialKey(
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
         return this.inner.isSpecialKey(streamId, key, version)
@@ -155,7 +155,7 @@ export class KvClient {
     async isWriterOfKey(
         account: string,
         streamId: string,
-        key: Bytes,
+        key: BytesLike,
         version?: number
     ): Promise<boolean> {
         return this.inner.isWriterOfKey(account, streamId, key, version)

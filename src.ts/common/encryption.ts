@@ -221,9 +221,10 @@ function deriveAesKey(sharedX: Uint8Array): Uint8Array {
     return hkdf(sha256, sharedX, new Uint8Array(0), ECIES_HKDF_INFO, 32)
 }
 
-export function deriveEciesEncryptKey(
-    recipientPub: Uint8Array | string
-): { key: Uint8Array; ephemeralPub: Uint8Array } {
+export function deriveEciesEncryptKey(recipientPub: Uint8Array | string): {
+    key: Uint8Array
+    ephemeralPub: Uint8Array
+} {
     const recipientCompressed = normalizePubKey(recipientPub)
 
     const ephemeralPriv = secp256k1.utils.randomSecretKey()

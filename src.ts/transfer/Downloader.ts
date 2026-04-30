@@ -59,10 +59,7 @@ export class Downloader {
     }
 
     private hasDecryptionKey(): boolean {
-        return (
-            this.symmetricKey !== undefined ||
-            this.privateKey !== undefined
-        )
+        return this.symmetricKey !== undefined || this.privateKey !== undefined
     }
 
     // ─── File-system download (Node.js only) ─────────────────────────────

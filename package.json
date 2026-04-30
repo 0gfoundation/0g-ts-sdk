@@ -1,6 +1,6 @@
 {
   "name": "@0gfoundation/0g-ts-sdk",
-  "version": "1.2.4",
+  "version": "1.2.6",
   "description": "JS/TS SDK for 0G Storage",
   "main": "./lib.commonjs/index.js",
   "module": "./lib.esm/index.js",
