@@ -83,6 +83,50 @@ export class KvClient {
         )
     }
 
+    /**
+     * Like `getNext`, but always returns the *fully assembled* value:
+     * tries a single-RPC `getNext` with `MAX_QUERY_SIZE` budget first
+     * (covers the common case where the value fits in one chunk), and
+     * falls back to `getValue`'s chunk-assembly loop if the value
+     * spans multiple chunks. Callers don't need to think about
+     * `startIndex`/`length` or partial-value reassembly.
+     *
+     * Returns `null` at end-of-stream (when the underlying RPC
+     * returns null/undefined for "no key found").
+     */
+    async getNextWithValue(
+        streamId: string,
+        key: BytesLike,
+        inclusive: boolean,
+        version?: number
+    ): Promise<KeyValue | null> {
+        const seg = await this.inner.getNext(
+            streamId,
+            key,
+            0,
+            MAX_QUERY_SIZE,
+            inclusive,
+            version
+        )
+        if (!seg) return null
+
+        const segData = Buffer.from(seg.data, 'base64')
+        if (segData.length === seg.size) {
+            // Fast path: the entire value fit in the first chunk. 1 RPC total.
+            return seg
+        }
+
+        // Slow path: value exceeds MAX_QUERY_SIZE; fetch the rest.
+        const full = await this.getValue(streamId, seg.key, version)
+        if (full === null) return null
+        return {
+            key: seg.key,
+            data: full.data,
+            size: full.size,
+            version: seg.version,
+        }
+    }
+
     async getPrev(
         streamId: string,
         key: BytesLike,
