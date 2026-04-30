@@ -1,6 +1,6 @@
-# 0g-ts-sdk
+# 0G Storage TS SDK
 
-This is the JavaScript SDK for 0g-storage. Features include:
+This is the TypeScript SDK for 0G Storage. Features include:
 
 - [x] File Merkle Tree Class
 - [x] Flow Contract Types
@@ -39,7 +39,7 @@ if (err === null) {
 await file.close();
 ```
 
-Upload file to 0g-storage:
+Upload file to 0G Storage:
 
 ```js
 import { getFlowContract } from '@0gfoundation/0g-storage-ts-sdk';
@@ -60,7 +60,7 @@ if (err === null) {
 }
 ```
 
-Download file from 0g-storage
+Download file from 0G Storage
 
 ```js
 err = await indexer.download(<root_hash>, <output_file>, <with_proof>);
